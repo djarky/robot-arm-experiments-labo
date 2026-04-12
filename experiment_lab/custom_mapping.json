@@ -1,0 +1,48 @@
+{
+    "axes": {
+        "base": 0,
+        "shoulder": 1,
+        "elbow": 3,
+        "j3": 4,
+        "j4": 2,
+        "j5": 5
+    },
+    "buttons": {
+        "gripper_open": 0,
+        "gripper_close": 1,
+        "reset": 7,
+        "snapshot": 3,
+        "toggle_console": 6
+    },
+    "deadzone": 0.1,
+    "controller_style": "Wiimote",
+    "profiles": {
+        "KM": {
+            "axes": {},
+            "buttons": {}
+        },
+        "/dev/input/event8": {
+            "axes": {
+                "base": 105,
+                "shoulder": 412,
+                "elbow": 407,
+                "j3": 103,
+                "j4": 108,
+                "j5": 108
+            },
+            "buttons": {}
+        },
+        "/dev/input/event6": {
+            "axes": {},
+            "buttons": {}
+        },
+        "/dev/input/event7": {
+            "axes": {
+                "base": 103
+            },
+            "buttons": {}
+        }
+    },
+    "active_category": "Wiimote",
+    "active_device_id": "/dev/input/event8"
+}
