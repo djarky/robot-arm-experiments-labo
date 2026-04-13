@@ -328,7 +328,8 @@ class ExperimentLabUI(QMainWindow):
         if self.input_mgr.active_device_id:
             # Control de los 6 ejes
             for i in range(min(len(joy_inputs), 6)):
-                if abs(joy_inputs[i]) > 0.1: # Deadzone
+                # Se elimina el 'if abs(joy_inputs[i]) > 0.1' para confiar en el InputManager
+                if joy_inputs[i] != 0: 
                     self.current_angles[i] += joy_inputs[i] * 2.0
                     self.current_angles[i] = max(-90, min(90, self.current_angles[i]))
                     self.sliders[i].blockSignals(True)
@@ -377,8 +378,11 @@ class ExperimentLabUI(QMainWindow):
                 self.comm.send_angles(self.current_angles)
                 self.last_sent_angles = list(self.current_angles)
                 # Feedback visual en consola cada vez que el "Link" se activa
+                # Limitamos a 2 veces por segundo para no saturar el render de Qt
                 if mando_movido:
-                    self.ai_console.append(f"<span style='color:#7986CB;'>[Link] Mando -> Sim: {self.current_angles[0]:.1f}°...</span>")
+                    if not hasattr(self, "_last_link_log") or time.time() - self._last_link_log > 0.5:
+                        self.ai_console.append(f"<span style='color:#7986CB;'>[Link] Mando -> Sim: {self.current_angles[0]:.1f}°...</span>")
+                        self._last_link_log = time.time()
         
         # 4. Actualizar Labels (siempre para feedback visual)
         for i, val in enumerate(self.current_angles):

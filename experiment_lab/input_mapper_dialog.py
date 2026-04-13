@@ -1,7 +1,8 @@
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea, QCheckBox
+    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea, QCheckBox,
+    QSlider
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QFont, QPalette, QColor
@@ -148,6 +149,18 @@ class InputMapperDialog(QDialog):
         self.chk_raw.toggled.connect(self.on_raw_toggled)
         hw_vbox.addWidget(self.chk_raw)
         
+        # --- Deadzone Slider [NUEVO] ---
+        dz_vbox = QVBoxLayout()
+        self.dz_label = QLabel("Zona Muerta: 0.10")
+        self.dz_label.setStyleSheet("font-size: 10px; color: #4CAF50; font-weight: bold;")
+        self.dz_slider = QSlider(Qt.Horizontal)
+        self.dz_slider.setRange(0, 50) # 0.00 a 0.50
+        self.dz_slider.setValue(10)
+        self.dz_slider.valueChanged.connect(self.on_deadzone_changed)
+        dz_vbox.addWidget(self.dz_label)
+        dz_vbox.addWidget(self.dz_slider)
+        hw_vbox.addLayout(dz_vbox)
+
         header_row.addLayout(hw_vbox)
 
         # Conectar lógica de cascada
@@ -409,8 +422,23 @@ class InputMapperDialog(QDialog):
         device_id = self.hw_selector.currentData()
         if device_id:
             self.input_mgr.set_active_device(category, device_id)
+            
+            # Cargar deadzone del perfil
+            current_dz = self.input_mgr.get_current_binds().get("deadzone", 0.1)
+            self.dz_slider.blockSignals(True)
+            self.dz_slider.setValue(int(current_dz * 100))
+            self.dz_slider.blockSignals(False)
+            self.dz_label.setText(f"Zona Muerta: {current_dz:.2f}")
+
             self.refresh_all_binds() # Refrescar botones al cambiar hardware
             print(f"[Mapper] Hardware activado: {category} -> {device_id}")
+
+    def on_deadzone_changed(self, value):
+        dz = value / 100.0
+        self.dz_label.setText(f"Zona Muerta: {dz:.2f}")
+        # Guardar en el perfil actual
+        self.input_mgr.get_current_binds()["deadzone"] = dz
+        print(f"[Mapper] Deadzone ajustada a {dz} para {self.input_mgr.active_device_id}")
 
     def update_diagram(self):
         style = self.input_mgr.custom_config.get("controller_style", "Xbox")

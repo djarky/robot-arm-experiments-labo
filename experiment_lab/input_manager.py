@@ -247,6 +247,9 @@ class InputManager:
             elif itype == "axis":
                 val = self.custom_evdev_state["axes"].get(iid, 0.0)
                 deadzone = self.get_current_binds().get("deadzone", 0.05)
+                # Si el valor es exactamente 0.0, siempre es neutral.
+                # Si deadzone es 0, permitimos cualquier valor no-cero.
+                if val == 0.0: return 0.0
                 return 0.0 if abs(val) < deadzone else val
         else:
             if not self.joystick: return 0.0
@@ -257,6 +260,7 @@ class InputManager:
                 try:
                     val = self.joystick.get_axis(iid)
                     deadzone = self.get_current_binds().get("deadzone", 0.1)
+                    if val == 0.0: return 0.0
                     return 0.0 if abs(val) < deadzone else val
                 except: return 0.0
         return 0.0
@@ -354,7 +358,8 @@ class InputManager:
                 if ev.type == pygame.JOYBUTTONDOWN:
                     return ("button", ev.button)
                 elif ev.type == pygame.JOYAXISMOTION:
-                    if abs(ev.value) > 0.5:
+                    # Umbral reducido a 0.02 para detectar mandos sensibles/custom
+                    if abs(ev.value) > 0.02:
                         return ("axis", ev.axis)
 
         # 2. Check Wiimote (Si hay nodos evdev activos)
@@ -378,7 +383,7 @@ class InputManager:
                         if info and info.max > info.min:
                             norm = (event.value - info.min) / (info.max - info.min)
                             val = (norm * 2.0) - 1.0 # -1 a 1
-                            if abs(val) > 0.5:
+                            if abs(val) > 0.02:
                                 return ("axis", event.code)
             except: pass
 
