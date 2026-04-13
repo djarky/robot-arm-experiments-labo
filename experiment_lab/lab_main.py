@@ -259,9 +259,15 @@ class ExperimentLabUI(QMainWindow):
 
     def open_mapper_dialog(self):
         """Abre la ventana premium de configuración de mandos."""
+        # Desactivamos el bucle principal temporalmente para que no "robe" eventos
+        # del dispositivo ni vacíe la cola mientras intentamos mapear.
+        self.loop_timer.stop()
+        
         dialog = InputMapperDialog(self.input_mgr, self)
-        if dialog.exec_():
+        if dialog.exec():
             self.ai_console.append(">> [Input] Configuración de dispositivo actualizada.")
+            
+        self.loop_timer.start(16)
 
     def on_slider_change(self, index, value):
         """Maneja el movimiento manual de un slider."""
@@ -301,7 +307,7 @@ class ExperimentLabUI(QMainWindow):
                 self.ai_console.append("!! ALERTA: Colisión detectada en simulación.")
 
         # 2. Leer entradas de mandos
-        joy_inputs, actions = self.input_mgr.get_arm_inputs()
+        joy_inputs, actions, camera_inputs = self.input_mgr.get_arm_inputs()
         
         # UI status mando... (mantener igual)
         if self.input_mgr.initialized:
@@ -310,13 +316,16 @@ class ExperimentLabUI(QMainWindow):
         elif self.input_mgr.wiimote_active:
             self.input_status.setText("Wiimote: Activo")
             self.input_status.setStyleSheet("color: #4CAF50;")
+        elif getattr(self.input_mgr, 'custom_evdev', None):
+            self.input_status.setText(f"RAW: {self.input_mgr.custom_evdev.name}")
+            self.input_status.setStyleSheet("color: #3f51b5;")
         else:
             self.input_status.setText("Mando: No detectado")
             self.input_status.setStyleSheet("color: #f44336;")
 
         # Aplicar deltas de mandos
         mando_movido = False
-        if self.input_mgr.initialized or self.input_mgr.wiimote_active:
+        if self.input_mgr.active_device_id:
             # Control de los 6 ejes
             for i in range(min(len(joy_inputs), 6)):
                 if abs(joy_inputs[i]) > 0.1: # Deadzone
@@ -345,16 +354,31 @@ class ExperimentLabUI(QMainWindow):
                 self.current_angles = [0.0] * 6
                 for s in self.sliders: s.setValue(0)
                 mando_movido = True
+
+            # Control de cámara
+            cam_moving = False
+            cam_deltas = [0.0] * 7
+            for i in range(len(camera_inputs)):
+                if abs(camera_inputs[i]) > 0.05:
+                    cam_deltas[i] = camera_inputs[i] * 0.15 # multiplier scale
+                    cam_moving = True
+            
+            if cam_moving:
+                self.comm.send_camera_offsets(cam_deltas)
         
         if mando_movido:
             self.last_interaction_time = time.time()
 
         # 3. ¿Debemos enviar ángulos a la simulación?
-        if time.time() - self.last_interaction_time < 2.0:
+        # Eliminamos el timeout de 2.0s para que el mando RAW siempre tenga control
+        if True: 
             diff = sum(abs(a - b) for a, b in zip(self.current_angles, self.last_sent_angles))
             if diff > 0.1:
                 self.comm.send_angles(self.current_angles)
                 self.last_sent_angles = list(self.current_angles)
+                # Feedback visual en consola cada vez que el "Link" se activa
+                if mando_movido:
+                    self.ai_console.append(f"<span style='color:#7986CB;'>[Link] Mando -> Sim: {self.current_angles[0]:.1f}°...</span>")
         
         # 4. Actualizar Labels (siempre para feedback visual)
         for i, val in enumerate(self.current_angles):

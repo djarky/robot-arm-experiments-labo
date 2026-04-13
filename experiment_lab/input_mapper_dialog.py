@@ -1,7 +1,7 @@
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea
+    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea, QCheckBox
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QFont, QPalette, QColor
@@ -34,8 +34,14 @@ class BindButton(QPushButton):
         """)
 
     def update_text(self):
-        prefix = "Eje" if self.key_name == "axes" else "Botón"
-        val_str = f"{prefix} {self.current_val}" if self.current_val is not None else "SIN ASIGNAR"
+        val_str = "SIN ASIGNAR"
+        if isinstance(self.current_val, dict):
+            t = self.current_val.get("type", "bt")
+            i = self.current_val.get("id", "?")
+            val_str = f"{t.capitalize()} {i}"
+        elif self.current_val is not None:
+            val_str = str(self.current_val)
+            
         if self.is_binding:
             self.setText(f"{self.action_name}\n>>> PRESIONA INPUT <<<")
             self.setStyleSheet(self.styleSheet() + "border: 1px solid #ff9800; background-color: #3e2723;")
@@ -133,8 +139,15 @@ class InputMapperDialog(QDialog):
         hw_label = QLabel("Dispositivo Físico:")
         hw_label.setStyleSheet("font-size: 10px; color: #888;")
         self.hw_selector = QComboBox()
+        self.hw_selector.currentIndexChanged.connect(self.on_hardware_changed)
         hw_vbox.addWidget(hw_label)
         hw_vbox.addWidget(self.hw_selector)
+        
+        self.chk_raw = QCheckBox("Forzar Lectura RAW UDEV")
+        self.chk_raw.setChecked(self.input_mgr.custom_config.get("force_raw_udev", False))
+        self.chk_raw.toggled.connect(self.on_raw_toggled)
+        hw_vbox.addWidget(self.chk_raw)
+        
         header_row.addLayout(hw_vbox)
 
         # Conectar lógica de cascada
@@ -169,6 +182,23 @@ class InputMapperDialog(QDialog):
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         
+        # Herramientas de Limpieza
+        tools_layout = QHBoxLayout()
+        btn_clear = QPushButton("🗑️ Limpiar Mando Actual")
+        btn_clear.clicked.connect(self.cmd_clear_current)
+        
+        btn_default = QPushButton("🎮 Binds por Defecto (Xbox)")
+        btn_default.clicked.connect(self.cmd_default_current)
+        
+        btn_clear_all = QPushButton("🧨 Borrar TODOS los Mandos")
+        btn_clear_all.setStyleSheet("color: #ffaaaa; border: 1px solid #aa0000;")
+        btn_clear_all.clicked.connect(self.cmd_clear_all)
+        
+        tools_layout.addWidget(btn_clear)
+        tools_layout.addWidget(btn_default)
+        tools_layout.addWidget(btn_clear_all)
+        right_layout.addLayout(tools_layout)
+        
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
@@ -176,21 +206,44 @@ class InputMapperDialog(QDialog):
         scroll_layout = QVBoxLayout(scroll_content)
         
         # Secciones
-        self.create_section(scroll_layout, "EJES (Articulaciones)", "axes", [
-            ("Base (J0)", "base"),
-            ("Hombro (J1)", "shoulder"),
-            ("Codo (J2)", "elbow"),
-            ("Muñeca J3", "j3"),
-            ("Muñeca J4", "j4"),
-            ("Muñeca J5", "j5")
+        self.create_section(scroll_layout, "EJES ROBOT (Articulaciones)", [
+            ("Base J0 (+ Derecha)", "base_pos"),
+            ("Base J0 (- Izquierda)", "base_neg"),
+            ("Hombro J1 (+ Arriba)", "shoulder_pos"),
+            ("Hombro J1 (- Abajo)", "shoulder_neg"),
+            ("Codo J2 (+ Arriba)", "elbow_pos"),
+            ("Codo J2 (- Abajo)", "elbow_neg"),
+            ("Muñeca J3 (+)", "j3_pos"),
+            ("Muñeca J3 (-)", "j3_neg"),
+            ("Muñeca J4 (+)", "j4_pos"),
+            ("Muñeca J4 (-)", "j4_neg"),
+            ("Muñeca J5 (+)", "j5_pos"),
+            ("Muñeca J5 (-)", "j5_neg")
         ])
         
-        self.create_section(scroll_layout, "BOTONES (Pinza)", "buttons", [
-            ("Abrir Pinza", "gripper_open"),
-            ("Cerrar Pinza", "gripper_close")
+        self.create_section(scroll_layout, "CÁMARA SIMULADOR", [
+            ("Cámara X (+ Der)", "cam_x_pos"),
+            ("Cámara X (- Izq)", "cam_x_neg"),
+            ("Cámara Y (+ Arr)", "cam_y_pos"),
+            ("Cámara Y (- Aba)", "cam_y_neg"),
+            ("Cámara Z (+ Fte)", "cam_z_pos"),
+            ("Cámara Z (- Atr)", "cam_z_neg"),
+            ("Zoom (+)", "cam_zoom_pos"),
+            ("Zoom (-)", "cam_zoom_neg"),
+            ("Pitch (+) Inclinación", "cam_pitch_pos"),
+            ("Pitch (-) Inclinación", "cam_pitch_neg"),
+            ("Yaw (+) Giro", "cam_yaw_pos"),
+            ("Yaw (-) Giro", "cam_yaw_neg"),
+            ("Roll (+) Ladeo", "cam_roll_pos"),
+            ("Roll (-) Ladeo", "cam_roll_neg")
         ])
         
-        self.create_section(scroll_layout, "ACCIONES RÁPIDAS", "buttons", [
+        self.create_section(scroll_layout, "BOTONES (Pinza)", [
+            ("Abrir Pinza", "gripper_open_pos"),
+            ("Cerrar Pinza", "gripper_close_pos")
+        ])
+        
+        self.create_section(scroll_layout, "ACCIONES RÁPIDAS", [
             ("Snapshot (Foto)", "snapshot"),
             ("Reset Posición", "reset"),
             ("Toggle Consola", "toggle_console")
@@ -215,37 +268,67 @@ class InputMapperDialog(QDialog):
         
         main_layout.addWidget(right_widget, 4)
 
-    def create_section(self, layout, title, key_type, items):
+    def cmd_clear_current(self):
+        self.input_mgr.get_current_binds()["inputs"] = {}
+        self.refresh_all_binds()
+
+    def cmd_default_current(self):
+        self.input_mgr.get_current_binds()["inputs"] = {
+            "base_pos": {"type": "axis", "id": 0},
+            "shoulder_pos": {"type": "axis", "id": 1},
+            "elbow_pos": {"type": "axis", "id": 3},
+            "j3_pos": {"type": "axis", "id": 4},
+            "j4_pos": {"type": "axis", "id": 2},
+            "j5_pos": {"type": "axis", "id": 5},
+            "gripper_open_pos": {"type": "button", "id": 0},
+            "gripper_close_pos": {"type": "button", "id": 1},
+            "reset": {"type": "button", "id": 7},
+            "snapshot": {"type": "button", "id": 3},
+            "toggle_console": {"type": "button", "id": 6}
+        }
+        self.refresh_all_binds()
+
+    def cmd_clear_all(self):
+        if "profiles" in self.input_mgr.custom_config:
+            for dev in self.input_mgr.custom_config["profiles"]:
+                self.input_mgr.custom_config["profiles"][dev]["inputs"] = {}
+        self.refresh_all_binds()
+
+    def create_section(self, layout, title, items):
         header = QLabel(title)
         header.setStyleSheet("color: #4CAF50; font-weight: bold; margin-top: 15px; border-bottom: 1px solid #333;")
         layout.addWidget(header)
         
-        current_binds = self.input_mgr.get_current_binds()
+        current_binds = self.input_mgr.get_current_binds().get("inputs", {})
         
         grid = QGridLayout()
+        # Colocaremos en 2 columnas
         for i, (label, action_id) in enumerate(items):
-            current_val = current_binds[key_type].get(action_id)
-            btn = BindButton(label, key_type, current_val)
+            current_val = current_binds.get(action_id)
+            btn = BindButton(label, "inputs", current_val)
             btn.action_id = action_id # Guardar para refresco
-            btn.clicked.connect(lambda checked=False, b=btn, a=action_id, k=key_type: self.start_binding(b, a, k))
+            btn.clicked.connect(lambda checked=False, b=btn, a=action_id: self.start_binding(b, a))
             self.bind_buttons.append(btn)
-            grid.addWidget(btn, i // 1, i % 1)
+            grid.addWidget(btn, i // 2, i % 2)
             
         layout.addLayout(grid)
 
     def refresh_all_binds(self):
         """Actualiza el texto de todos los botones según el dispositivo actual."""
-        current_binds = self.input_mgr.get_current_binds()
+        current_binds = self.input_mgr.get_current_binds().get("inputs", {})
         for btn in self.bind_buttons:
-            btn.current_val = current_binds[btn.key_name].get(btn.action_id)
+            btn.current_val = current_binds.get(btn.action_id)
             btn.update_text()
 
-    def start_binding(self, btn, action_id, key_type):
+    def start_binding(self, btn, action_id):
+        # 🔥 Vaciar historial para evitar auto-mapeos erróneos
+        self.input_mgr.flush_queues()
+        
         # Reset anterior si lo había
         if self.binding_target:
             self.binding_target[0].set_binding(False)
         
-        self.binding_target = (btn, action_id, key_type)
+        self.binding_target = (btn, action_id)
         btn.set_binding(True)
 
     def poll_input(self):
@@ -255,14 +338,14 @@ class InputMapperDialog(QDialog):
         input_data = self.input_mgr.get_last_input()
         if input_data:
             itype, iid = input_data
-            btn, action_id, key_type = self.binding_target
+            btn, action_id = self.binding_target
             
-            # Guardamos en el perfil del dispositivo activo
+            # Guardamos en el perfil del dispositivo activo unificado
             current_binds = self.input_mgr.get_current_binds()
-            current_binds[key_type][action_id] = iid
+            inputs_dict = current_binds.setdefault("inputs", {})
+            inputs_dict[action_id] = {"type": itype, "id": iid}
             
-            btn.current_val = iid
-            btn.key_name = "axes" if itype == "axis" else "buttons"
+            btn.current_val = {"type": itype, "id": iid}
             
             btn.set_binding(False)
             self.binding_target = None
@@ -282,12 +365,17 @@ class InputMapperDialog(QDialog):
             self.input_mgr.set_active_device(device_id)
             print(f"[Mapper] Hardware seleccionado manualmente: {device_id}")
 
+    def on_raw_toggled(self, checked):
+        self.input_mgr.custom_config["force_raw_udev"] = checked
+        self.on_category_changed(self.cat_selector.currentText())
+
     def on_category_changed(self, category):
         """Puebla el segundo dropdown basado en la categoría elegida."""
         self.hw_selector.blockSignals(True)
         self.hw_selector.clear()
         
-        cats = self.input_mgr.get_categorized_devices()
+        force_raw = self.chk_raw.isChecked()
+        cats = self.input_mgr.get_categorized_devices(force_raw=force_raw)
         devices = cats.get(category, [])
         
         for dev in devices:

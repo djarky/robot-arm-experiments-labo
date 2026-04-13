@@ -126,7 +126,9 @@ class InputManager:
         self.wiimote_state = {"accel": [0.0, 0.0, 0.0], "buttons": {}}
         self.is_pairing = False
         
-        # New Inputs
+        # Custom Raw Evdev Controller State
+        self.custom_evdev = None
+        self.custom_evdev_state = {"axes": {}, "buttons": {}}
         self.dsu_client = DSUClient()
         self.available_devices = []
 
@@ -150,47 +152,116 @@ class InputManager:
 
     def get_arm_inputs(self):
         """
-        Retorna los valores de control para el brazo (-1.0 a 1.0) según el dispositivo activo.
+        Retorna los valores de control para el brazo y la cámara según el dispositivo activo.
+        Retorna: (joy_inputs_list, actions_dict, camera_inputs_list)
         """
+        if not self.active_device_id:
+            # Si no hay dispositivo, solo vaciamos pygame y retornamos neutro
+            pygame.event.get()
+            return [0.0]*7, {}, [0.0]*7
+
         if self.active_device_id == "Wiimote":
             return self._get_wiimote_inputs()
-        elif self.active_device_id == "KM":
-            return self._get_keyboard_mouse_inputs()
         elif self.active_device_id == "DSU":
-            return self._get_dsu_inputs(), {}
+            return self._get_dsu_inputs(), {}, [0]*7
 
-        # Default: Gamepad
+        # Purga la cola de eventos de PyGame
+        pygame.event.get()
 
-        if not self.initialized or not self.joystick:
-            # Fallback a búsqueda de mandos
-            pygame.event.pump()
-            if pygame.joystick.get_count() > 0:
-                self._refresh_joysticks()
-            return [0.0] * 6, {}
-
-        pygame.event.pump()
+        # 1. Poll de eventos para dispositivos Evdev genéricos (como el Digikey)
+        if self.custom_evdev:
+            try:
+                # read() es rápido pero en algunos sistemas preferimos read_one() 
+                # en bucle para control total del bloqueo
+                while True:
+                    event = self.custom_evdev.read_one()
+                    if event is None: break
+                    if event.type == ecodes.EV_KEY:
+                        self.custom_evdev_state["buttons"][event.code] = event.value
+                    elif event.type == ecodes.EV_ABS:
+                        info = self.custom_evdev.absinfo(event.code)
+                        if info and info.max > info.min:
+                            norm = (event.value - info.min) / (info.max - info.min)
+                            self.custom_evdev_state["axes"][event.code] = (norm * 2.0) - 1.0
+            except (BlockingIOError, OSError):
+                pass
         
+        # Unified Polling (Gamepad, Keyboard, Raw Evdev)
         inputs = {
-            "base": self._get_axis("base"),
-            "shoulder": self._get_axis("shoulder"),
-            "elbow": self._get_axis("elbow"),
-            "j3": self._get_axis("j3"),
-            "j4": self._get_axis("j4"),
-            "j5": self._get_axis("j5"),
-            "gripper": 0.0
+            "base": self._resolve_unified_axis("base"),
+            "shoulder": self._resolve_unified_axis("shoulder"),
+            "elbow": self._resolve_unified_axis("elbow"),
+            "j3": self._resolve_unified_axis("j3"),
+            "j4": self._resolve_unified_axis("j4"),
+            "j5": self._resolve_unified_axis("j5"),
+            "gripper": self._resolve_unified_axis("gripper"),
         }
         
-        if self._get_button("gripper_open"): inputs["gripper"] = 1.0
-        if self._get_button("gripper_close"): inputs["gripper"] = -1.0
-        
-        # Acciones especiales (retornamos como un diccionario extra si es necesario)
         actions = {
-            "snapshot": self._get_button("snapshot"),
-            "reset": self._get_button("reset"),
-            "toggle_console": self._get_button("toggle_console")
+            "snapshot": self._read_raw_bind(self._get_bind("snapshot")) > 0.5,
+            "reset": self._read_raw_bind(self._get_bind("reset")) > 0.5,
+            "toggle_console": self._read_raw_bind(self._get_bind("toggle_console")) > 0.5
         }
         
-        return list(inputs.values()), actions
+        camera_inputs = [
+            self._resolve_unified_axis("cam_x"),
+            self._resolve_unified_axis("cam_y"),
+            self._resolve_unified_axis("cam_z"),
+            self._resolve_unified_axis("cam_zoom"),
+            self._resolve_unified_axis("cam_pitch"),
+            self._resolve_unified_axis("cam_roll"),
+            self._resolve_unified_axis("cam_yaw")
+        ]
+        
+        return list(inputs.values()), actions, camera_inputs
+
+    def _get_bind(self, action_name):
+        return self.get_current_binds().get("inputs", {}).get(action_name)
+
+    def _resolve_unified_axis(self, name_base):
+        binds = self.get_current_binds().get("inputs", {})
+        pos_bind = binds.get(f"{name_base}_pos")
+        neg_bind = binds.get(f"{name_base}_neg")
+        
+        pos_val = self._read_raw_bind(pos_bind)
+        neg_val = self._read_raw_bind(neg_bind)
+        
+        return pos_val - neg_val
+
+    def _read_raw_bind(self, bind):
+        if not bind: return 0.0
+        itype = bind.get("type")
+        iid = bind.get("id")
+        
+        # Evaluador unificado por backend
+        if self.active_device_id == "KM":
+            keys = pygame.key.get_pressed()
+            try:
+                if keys[iid]: return 1.0
+            except: pass
+            return 0.0
+            
+        elif str(self.active_device_id).startswith("/dev/input/"):
+            if itype == "button":
+                return float(self.custom_evdev_state["buttons"].get(iid, 0))
+            elif itype == "axis":
+                val = self.custom_evdev_state["axes"].get(iid, 0.0)
+                deadzone = self.get_current_binds().get("deadzone", 0.05)
+                return 0.0 if abs(val) < deadzone else val
+        else:
+            if not self.joystick: return 0.0
+            if itype == "button":
+                try: return 1.0 if self.joystick.get_button(iid) else 0.0
+                except: return 0.0
+            elif itype == "axis":
+                try:
+                    val = self.joystick.get_axis(iid)
+                    deadzone = self.get_current_binds().get("deadzone", 0.1)
+                    return 0.0 if abs(val) < deadzone else val
+                except: return 0.0
+        return 0.0
+
+    # (Legacy fallbacks eliminated as they are natively handled by unified resolver)
 
     def _get_wiimote_inputs(self):
         """Lee eventos de todos los nodos vinculados al Wiimote (Botones + Accel)."""
@@ -216,29 +287,7 @@ class InputManager:
         # Nota: Multiplicamos por sensibilidad o usamos deadzone si es necesario
         return [accel[0], accel[1], 0.0, 0.0, 0.0, 0.0], {}
 
-    def _get_axis(self, name):
-        axis_id = self.config["axes"].get(name)
-        if axis_id is None: return 0.0
-        
-        val = self.joystick.get_axis(axis_id)
-        if abs(val) < self.config["deadzone"]:
-            return 0.0
-        return val
 
-    def _get_button(self, name):
-        btn_id = self.config["buttons"].get(name)
-        if btn_id is None: return False
-        return self.joystick.get_button(btn_id)
-
-    def set_profile(self, profile_name):
-        if profile_name in self.PROFILES:
-            self.active_profile = profile_name
-            self.config = self.PROFILES[profile_name]
-            print(f"[Input] Perfil cambiado a: {profile_name}")
-        elif profile_name == "Custom":
-            self.active_profile = "Custom"
-            self.config = self.custom_config
-            print(f"[Input] Perfil cambiado a: Custom")
 
     def load_custom_mapping(self):
         if os.path.exists(self.custom_mapping_path):
@@ -254,13 +303,7 @@ class InputManager:
 
     def _reset_custom_config(self):
         self.custom_config = {
-            "axes": {
-                "base": 0, "shoulder": 1, "elbow": 3, "j3": 4, "j4": 2, "j5": 5
-            },
-            "buttons": {
-                "gripper_open": 0, "gripper_close": 1, "reset": 7,
-                "snapshot": 3, "toggle_console": 6
-            },
+            "inputs": {},
             "deadzone": 0.1,
             "controller_style": "Xbox"
         }
@@ -288,34 +331,33 @@ class InputManager:
             json.dump(self.custom_config, f, indent=4)
         print(f"[Input] Configuración de perfiles guardada en {path}")
 
+    def flush_queues(self):
+        """Descarta eventos obsoletos para evitar mappings fantasma de la historia."""
+        pygame.event.clear()
+        if self.custom_evdev:
+            try:
+                while self.custom_evdev.read_one(): pass
+            except: pass
+
     def get_last_input(self):
         """
-        Detecta y retorna el primer input (eje o botón) en CUALQUIERA de los dispositivos
-        activos o candidatos (Teclado, Mando, Wiimote).
-        Retorna: (type, id) o None
+        Detecta y retorna el primer input (eje o botón).
+        Utiliza el sistema de eventos en vivo para evitar ghosting de teclas sostenidas.
         """
-        pygame.event.pump()
+        is_raw_mode = str(self.active_device_id).startswith("/dev/input/")
         
-        # 1. Check Keyboard (Prioridad si estamos mapeando teclado)
-        keys = pygame.key.get_pressed()
-        for k in range(len(keys)):
-            if keys[k]:
-                # Retornamos el nombre de la constante para que sea legible
-                return ("button", k)
+        # 1. Consumir la cola de eventos de PyGame
+        for ev in pygame.event.get():
+            if ev.type == pygame.KEYDOWN:
+                return ("button", ev.key)
+            elif not is_raw_mode: # Solo si NO estamos en raw evdev
+                if ev.type == pygame.JOYBUTTONDOWN:
+                    return ("button", ev.button)
+                elif ev.type == pygame.JOYAXISMOTION:
+                    if abs(ev.value) > 0.5:
+                        return ("axis", ev.axis)
 
-        # 2. Check Joysticks (Si hay alguno inicializado)
-        if self.joystick:
-            # Check buttons
-            for i in range(self.joystick.get_numbuttons()):
-                if self.joystick.get_button(i):
-                    return ("button", i)
-            # Check axes
-            for i in range(self.joystick.get_numaxes()):
-                val = self.joystick.get_axis(i)
-                if abs(val) > 0.5:
-                    return ("axis", i)
-
-        # 3. Check Wiimote (Si hay nodos evdev)
+        # 2. Check Wiimote (Si hay nodos evdev activos)
         if self.wiimote_active:
             for dev in self.wiimote_nodes:
                 try:
@@ -324,10 +366,61 @@ class InputManager:
                         if event.type == ecodes.EV_KEY:
                             return ("button", event.code)
                 except: pass
+                
+        # 3. Check Custom Evdev (Si está conectado un nodo genérico como Digikey)
+        if self.custom_evdev:
+            try:
+                for event in self.custom_evdev.read():
+                    if event.type == ecodes.EV_KEY and event.value == 1:
+                        return ("button", event.code)
+                    elif event.type == ecodes.EV_ABS:
+                        info = self.custom_evdev.absinfo(event.code)
+                        if info and info.max > info.min:
+                            norm = (event.value - info.min) / (info.max - info.min)
+                            val = (norm * 2.0) - 1.0 # -1 a 1
+                            if abs(val) > 0.5:
+                                return ("axis", event.code)
+            except: pass
 
         return None
+
+    def _get_custom_evdev_inputs(self):
+        """Procesa y retorna los datos del Custom Controller por Evdev puro."""
+        if not self.custom_evdev: return [0.0]*6, {}
         
-        return None
+        # Mantenemos el estado actualizado
+        try:
+            for event in self.custom_evdev.read():
+                if event.type == ecodes.EV_KEY:
+                    self.custom_evdev_state["buttons"][event.code] = event.value
+                elif event.type == ecodes.EV_ABS:
+                    info = self.custom_evdev.absinfo(event.code)
+                    if info and info.max > info.min:
+                        norm = (event.value - info.min) / (info.max - info.min)
+                        self.custom_evdev_state["axes"][event.code] = (norm * 2.0) - 1.0
+        except (BlockingIOError, OSError): pass
+        
+        binds = self.get_current_binds()
+        axes_config = binds.get("axes", {})
+        btn_config = binds.get("buttons", {})
+        deadzone = binds.get("deadzone", 0.05)
+        
+        def g_axis(name):
+            val = self.custom_evdev_state["axes"].get(axes_config.get(name), 0.0)
+            return 0.0 if abs(val) < deadzone else val
+
+        inputs = [
+            g_axis("base"), g_axis("shoulder"), g_axis("elbow"), 
+            g_axis("j3"), g_axis("j4"), g_axis("j5")
+        ]
+        
+        actions = {
+            "gripper_open": self.custom_evdev_state["buttons"].get(btn_config.get("gripper_open")),
+            "gripper_close": self.custom_evdev_state["buttons"].get(btn_config.get("gripper_close")),
+            "snapshot": self.custom_evdev_state["buttons"].get(btn_config.get("snapshot")),
+            "reset": self.custom_evdev_state["buttons"].get(btn_config.get("reset"))
+        }
+        return inputs, actions
 
     # --- MOCKS ---
     def update_udp_motion(self, data):
@@ -379,17 +472,26 @@ class InputManager:
         accel = self.dsu_client.data["accel"]
         return [accel[0], accel[1], 0.0, 0.0, 0.0, 0.0]
 
-    def get_categorized_devices(self):
-        """Retorna dispositivos agrupados por categorías para el Mapper."""
+    def get_categorized_devices(self, force_raw=False):
+        """Retorna un diccionario de categorías con sus dispositivos detectados."""
         categories = {
+            "Teclado": [{"id": "KM", "name": "Teclado y Ratón Genérico"}],
             "Mando Xbox": [],
             "Mando PS5": [],
             "Nintendo Joycons": [],
-            "Wiimote": [],
-            "Teclado": [{"id": "KM", "name": "Teclado y Mouse Universal"}],
-            "DSU": [{"id": "DSU", "name": "DSU (Control vía Red)"}],
+            "Wiimote": [{"id": "Wiimote", "name": "Buscando nodo oculto..."}],
+            "DSU": [{"id": "DSU", "name": "Servidor Cemuhook / Móvil"}],
             "Otros (Custom)": []
         }
+        
+        if force_raw:
+            if EVDEV_AVAILABLE:
+                try:
+                    for path in evdev.list_devices():
+                        dev = evdev.InputDevice(path)
+                        categories["Otros (Custom)"].append({"id": path, "name": f"RAW: {dev.name}"})
+                except: pass
+            return categories
         
         detected_phys = set() # Para evitar duplicados entre evdev y pygame
         
@@ -464,9 +566,12 @@ class InputManager:
         elif str(device_id).startswith("/dev/input/"):
             # Modo rudo evdev
             try:
-                pygame.joystick.init() # Intentar re-init general
-                self.initialized = False # Por ahora preferimos pygame para el loop principal
-            except: pass
+                self.custom_evdev = evdev.InputDevice(device_id)
+                self.custom_evdev_state = {"axes": {}, "buttons": {}}
+                print(f"[Input] Modo Raw Evdev Activado para {self.custom_evdev.name}")
+            except Exception as e:
+                print(f"[Input] Error activando Raw Evdev en {device_id}: {e}")
+                self.custom_evdev = None
 
     def start_pairing(self, callback=None):
         """Fase 1: Escanear vía bluetoothctl. Fase 2: Detectar nodos udev."""

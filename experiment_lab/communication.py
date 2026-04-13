@@ -38,6 +38,11 @@ class LabCommunication:
             except Exception as e:
                 print(f"[Comm] Serial write error: {e}")
 
+    def send_camera_offsets(self, offsets):
+        """Envía los deltas de cámara a la simulación."""
+        msg = json.dumps({"type": "camera_offset", "data": offsets})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
     def connect_arduino(self, port, baud=115200):
         try:
             self.ser = serial.Serial(port, baud, timeout=0.1)

@@ -15,11 +15,12 @@
         "toggle_console": 6
     },
     "deadzone": 0.1,
-    "controller_style": "Wiimote",
+    "controller_style": "Xbox",
     "profiles": {
         "KM": {
             "axes": {},
-            "buttons": {}
+            "buttons": {},
+            "inputs": {}
         },
         "/dev/input/event8": {
             "axes": {
@@ -30,19 +31,81 @@
                 "j4": 108,
                 "j5": 108
             },
-            "buttons": {}
+            "buttons": {},
+            "inputs": {}
         },
         "/dev/input/event6": {
             "axes": {},
-            "buttons": {}
+            "buttons": {},
+            "inputs": {}
         },
         "/dev/input/event7": {
             "axes": {
                 "base": 103
             },
-            "buttons": {}
+            "buttons": {},
+            "inputs": {}
+        },
+        "/dev/input/event4": {
+            "axes": {
+                "base": 3,
+                "shoulder": 5,
+                "elbow": 5,
+                "j3": 4,
+                "j4": 3,
+                "j5": 4
+            },
+            "buttons": {},
+            "inputs": {}
+        },
+        "/dev/input/event5": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {
+                "base_pos": {
+                    "type": "button",
+                    "id": 308
+                },
+                "base_neg": {
+                    "type": "button",
+                    "id": 307
+                },
+                "shoulder_pos": {
+                    "type": "button",
+                    "id": 307
+                },
+                "j4_pos": {
+                    "type": "button",
+                    "id": 308
+                },
+                "cam_x_pos": {
+                    "type": "button",
+                    "id": 309
+                },
+                "cam_x_neg": {
+                    "type": "button",
+                    "id": 307
+                },
+                "j5_pos": {
+                    "type": "button",
+                    "id": 308
+                },
+                "j5_neg": {
+                    "type": "button",
+                    "id": 307
+                },
+                "cam_y_pos": {
+                    "type": "button",
+                    "id": 309
+                },
+                "cam_zoom_neg": {
+                    "type": "button",
+                    "id": 309
+                }
+            }
         }
     },
-    "active_category": "Wiimote",
-    "active_device_id": "/dev/input/event8"
+    "active_category": "Otros (Custom)",
+    "active_device_id": "/dev/input/event5",
+    "force_raw_udev": true
 }
