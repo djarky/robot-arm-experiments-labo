@@ -14,6 +14,8 @@ from PySide6.QtGui import QFont, QColor, QPalette
 from communication import LabCommunication
 from input_manager import InputManager
 from input_mapper_dialog import InputMapperDialog
+from fsm_engine import FSMEngine
+# El import de FSMDesignerWindow se hará dinámicamente o al principio
 
 class ExperimentLabUI(QMainWindow):
     def __init__(self):
@@ -41,6 +43,12 @@ class ExperimentLabUI(QMainWindow):
         self.sim_process = None
         
         self.init_ui()
+        
+        # FSM Engine
+        self.fsm = FSMEngine()
+        self.fsm_file = os.path.join(os.path.dirname(__file__), "fsm_sequences.json")
+        self.all_fsm_data = {}
+        self.load_fsm_library()
         
         # Lanzar simulación automáticamente
         QTimer.singleShot(500, self.launch_simulation)
@@ -130,6 +138,28 @@ class ExperimentLabUI(QMainWindow):
 
         angles_group.setLayout(angles_layout)
         left_panel.addWidget(angles_group)
+
+        # --- FSM DESIGNER LAUNCHER ---
+        fsm_design_group = QGroupBox("Automatización / FSM")
+        fsm_design_layout = QVBoxLayout()
+        
+        self.btn_open_fsm_designer = QPushButton("🚀 ABRIR DISEÑADOR FSM")
+        self.btn_open_fsm_designer.setMinimumHeight(50)
+        self.btn_open_fsm_designer.setStyleSheet("""
+            QPushButton { 
+                background-color: #1a237e; 
+                border: 2px solid #3f51b5; 
+                font-weight: bold; 
+                font-size: 14px; 
+            }
+            QPushButton:hover { background-color: #283593; border: 2px solid #5c6bc0; }
+        """)
+        self.btn_open_fsm_designer.clicked.connect(self.open_fsm_designer)
+        
+        fsm_design_layout.addWidget(self.btn_open_fsm_designer)
+        fsm_design_group.setLayout(fsm_design_layout)
+        left_panel.addWidget(fsm_design_group)
+
         left_panel.addStretch()
         
         self.top_splitter.addWidget(left_panel_widget)
@@ -275,6 +305,95 @@ class ExperimentLabUI(QMainWindow):
         self.angle_labels[index].setText(f"J{index}: {self.current_angles[index]:.1f}°")
         self.last_interaction_time = time.time() # Registrar interacción manual
 
+    def load_fsm_library(self):
+        """Carga el JSON de secuencias FSM del laboratorio."""
+        if os.path.exists(self.fsm_file):
+            try:
+                with open(self.fsm_file, "r") as f:
+                    self.all_fsm_data = json.load(f)
+            except Exception as e:
+                # Si ai_console no está listo aún, imprimir a consola
+                print(f"[FSM] Error al cargar biblioteca: {e}")
+        else:
+            self.save_fsm_library()
+
+    def save_fsm_library(self):
+        """Guarda la biblioteca actual en el JSON."""
+        try:
+            with open(self.fsm_file, "w") as f:
+                json.dump(self.all_fsm_data, f, indent=4)
+        except Exception as e:
+            print(f"[FSM] Error al guardar biblioteca: {e}")
+
+    def import_from_main_gui(self):
+        """Importa poses y animaciones del sistema principal al Lab."""
+        try:
+            root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            poses_path = os.path.join(root_dir, "poses.json")
+            anims_path = os.path.join(root_dir, "animations.json")
+            
+            imported_count = 0
+            
+            if os.path.exists(poses_path):
+                with open(poses_path, "r") as f:
+                    main_poses = json.load(f)
+                for name, angles in main_poses.items():
+                    fsm_name = f"Pose_{name}"
+                    if fsm_name not in self.all_fsm_data:
+                        self.all_fsm_data[fsm_name] = {
+                            "entry_state": "main",
+                            "states": {
+                                "main": { "pose": name, "angles": angles, "transition_time": 1.0, "transitions": [] }
+                            }
+                        }
+                        imported_count += 1
+
+            if os.path.exists(anims_path):
+                with open(anims_path, "r") as f:
+                    main_anims = json.load(f)
+                with open(poses_path, "r") as f:
+                    main_poses = json.load(f)
+
+                for anim_name, steps in main_anims.items():
+                    fsm_name = f"Seq_{anim_name}"
+                    if fsm_name not in self.all_fsm_data:
+                        states = {}
+                        for i, step in enumerate(steps):
+                            state_name = f"step_{i}"
+                            pose_key = step["pose"]
+                            angles = main_poses.get(pose_key, [0.0]*6)
+                            next_state = f"step_{i+1}" if i < len(steps)-1 else None
+                            states[state_name] = {
+                                "pose": str(pose_key),
+                                "angles": angles,
+                                "transition_time": step.get("duration", 1.0),
+                                "transitions": [
+                                    {"type": "time", "params": step.get("duration", 1.0) + 1.0, "next": next_state}
+                                ] if next_state else []
+                            }
+                        self.all_fsm_data[fsm_name] = { "entry_state": "step_0", "states": states }
+                        imported_count += 1
+            
+            if imported_count > 0:
+                self.save_fsm_library()
+        except Exception as e:
+            print(f"[FSM] Error en importación: {e}")
+
+    def open_fsm_designer(self):
+        """Lanza la ventana del Diseñador FSM."""
+        try:
+            from fsm_designer import FSMDesignerWindow
+            if not hasattr(self, "fsm_designer_win") or not self.fsm_designer_win.isVisible():
+                self.fsm_designer_win = FSMDesignerWindow(self) # Pasar 'self' para acceso a comm/sim
+                self.fsm_designer_win.show()
+            else:
+                self.fsm_designer_win.raise_()
+                self.fsm_designer_win.activateWindow()
+        except ImportError as e:
+            self.ai_console.append(f">> [Error] No se pudo cargar el Diseñador FSM: {e}")
+        except Exception as e:
+            self.ai_console.append(f">> [Error] Error al abrir Diseñador: {e}")
+
     def save_current_pose(self):
         """Guarda la posición actual en el archivo de poses."""
         try:
@@ -297,8 +416,8 @@ class ExperimentLabUI(QMainWindow):
         # 1. Leer entradas de la simulación (Feedback) - Vaciado completo del buffer
         fb = self.comm.get_feedback()
         if fb:
+            self.last_feedback = fb
             if fb.get("type") == "sync_angles":
-                # Solo sincronizamos desde Ursina si NO estamos operando los controles del Lab
                 # damos un margen de 0.5 segundos tras la última interacción local
                 if time.time() - self.last_interaction_time > 0.5:
                     angles = fb["data"]
@@ -306,10 +425,36 @@ class ExperimentLabUI(QMainWindow):
             elif fb.get("type") == "collision_status" and fb.get("colliding"):
                 self.ai_console.append("!! ALERTA: Colisión detectada en simulación.")
 
-        # 2. Leer entradas de mandos
+        # 2. Leer entradas de mandos (Necesario antes de la FSM para los triggers)
         joy_inputs, actions, camera_inputs = self.input_mgr.get_arm_inputs()
-        
-        # UI status mando... (mantener igual)
+
+        # 3. Actualizar FSM si está activa
+        if self.fsm.active and not self.fsm.is_paused:
+            ext_inputs = {
+                "keys": set(),
+                "sensors": {
+                    "collision": getattr(self, "last_feedback", {}).get("colliding", False)
+                }
+            }
+            # Alimentar FSM con las acciones del mando
+            if actions:
+                for action_name, pressed in actions.items():
+                    if pressed:
+                        ext_inputs["keys"].add(action_name)
+            
+            fsm_angles = self.fsm.update(ext_inputs)
+            self.current_angles = list(fsm_angles)
+            # Notificar a la ventana del diseñador si está abierta
+            if hasattr(self, "fsm_designer_win") and self.fsm_designer_win:
+                self.fsm_designer_win.update_status_from_main()
+            
+            # Sincronizar Sliders visualmente sin disparar eventos redundantes
+            for i in range(6):
+                self.sliders[i].blockSignals(True)
+                self.sliders[i].setValue(int(self.current_angles[i]))
+                self.sliders[i].blockSignals(False)
+
+        # UI status mando...
         if self.input_mgr.initialized:
             self.input_status.setText(f"Mando: {self.input_mgr.joystick.get_name()}")
             self.input_status.setStyleSheet("color: #4CAF50;")

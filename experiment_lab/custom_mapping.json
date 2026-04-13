@@ -61,49 +61,51 @@
         "/dev/input/event5": {
             "axes": {},
             "buttons": {},
-            "inputs": {}
-        },
-        "JOY_0": {
-            "axes": {},
-            "buttons": {},
             "inputs": {
                 "base_pos": {
                     "type": "button",
-                    "id": 3
-                },
-                "shoulder_pos": {
-                    "type": "axis",
-                    "id": 4
-                },
-                "elbow_pos": {
-                    "type": "button",
-                    "id": 4
-                },
-                "j3_pos": {
-                    "type": "button",
-                    "id": 5
-                },
-                "elbow_neg": {
-                    "type": "button",
-                    "id": 7
-                },
-                "j3_neg": {
-                    "type": "button",
-                    "id": 6
+                    "id": 308
                 },
                 "base_neg": {
                     "type": "button",
-                    "id": 5
+                    "id": 307
+                },
+                "shoulder_pos": {
+                    "type": "button",
+                    "id": 307
+                },
+                "j4_pos": {
+                    "type": "button",
+                    "id": 308
+                },
+                "cam_x_pos": {
+                    "type": "button",
+                    "id": 309
+                },
+                "cam_x_neg": {
+                    "type": "button",
+                    "id": 307
                 },
                 "j5_pos": {
                     "type": "button",
-                    "id": 5
+                    "id": 308
+                },
+                "j5_neg": {
+                    "type": "button",
+                    "id": 307
+                },
+                "cam_y_pos": {
+                    "type": "button",
+                    "id": 309
+                },
+                "cam_zoom_neg": {
+                    "type": "button",
+                    "id": 309
                 }
-            },
-            "deadzone": 0.0
+            }
         }
     },
     "active_category": "Otros (Custom)",
-    "active_device_id": "JOY_0",
-    "force_raw_udev": false
+    "active_device_id": "/dev/input/event5",
+    "force_raw_udev": true
 }
