@@ -6,7 +6,7 @@ import time
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QTextEdit, QFrame, QGroupBox,
-    QSplitter, QSlider, QCheckBox
+    QSplitter, QSlider, QCheckBox, QLineEdit
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QColor, QPalette
@@ -15,6 +15,7 @@ from communication import LabCommunication
 from input_manager import InputManager
 from input_mapper_dialog import InputMapperDialog
 from fsm_engine import FSMEngine
+from ai_agent import AIAgent
 # El import de FSMDesignerWindow se hará dinámicamente o al principio
 
 class ExperimentLabUI(QMainWindow):
@@ -50,6 +51,10 @@ class ExperimentLabUI(QMainWindow):
         self.all_fsm_data = {}
         self.load_fsm_library()
         
+        # AI Agent
+        self.ai_agent = AIAgent(self.ai_console)
+        self.temp_screenshot_path = os.path.join(os.path.dirname(__file__), "assets", "temp_sim_state.png")
+
         # Lanzar simulación automáticamente
         QTimer.singleShot(500, self.launch_simulation)
         
@@ -179,25 +184,63 @@ class ExperimentLabUI(QMainWindow):
         # Añadimos el widget superior al layout global con factor de expansión 1
         self.global_layout.addWidget(top_widget, 1)
         
-        # --- BOTTOM PANEL (Consola Colapsable) ---
-        self.console_container = QGroupBox("Consola de Experimentos")
-        console_layout = QVBoxLayout()
+        # --- BOTTOM PANEL (Consola y Chat) ---
+        self.console_container = QGroupBox("Panel de Inteligencia y Estado")
+        console_main_layout = QVBoxLayout()
         
-        self.btn_toggle_console = QPushButton("▲ EXPANDIR CONSOLA")
+        self.btn_toggle_console = QPushButton("▲ EXPANDIR PANEL")
         self.btn_toggle_console.clicked.connect(self.toggle_console)
+        console_main_layout.addWidget(self.btn_toggle_console)
+
+        # Splitter para separar Log de Chat
+        self.bottom_splitter = QSplitter(Qt.Horizontal)
         
+        # Lado Izquierdo: Consola de Logs (la existente)
+        log_widget = QWidget()
+        log_layout = QVBoxLayout(log_widget)
+        log_layout.setContentsMargins(0, 5, 0, 0)
         self.ai_console = QTextEdit()
         self.ai_console.setReadOnly(True)
         self.ai_console.append(">> Sistema Lab inicializado. Ursina cargando...")
+        log_layout.addWidget(QLabel("LOGS DEL SISTEMA:"))
+        log_layout.addWidget(self.ai_console)
+        self.bottom_splitter.addWidget(log_widget)
+
+        # Lado Derecho: Chat con IA
+        chat_widget = QWidget()
+        chat_layout = QVBoxLayout(chat_widget)
+        chat_layout.setContentsMargins(0, 5, 0, 0)
         
-        console_layout.addWidget(self.btn_toggle_console)
-        console_layout.addWidget(self.ai_console)
-        self.console_container.setLayout(console_layout)
+        self.chat_history = QTextEdit()
+        self.chat_history.setReadOnly(True)
+        self.chat_history.setStyleSheet("background-color: #0d1117; color: #c9d1d9; border: 1px solid #30363d;")
+        self.chat_history.append("<span style='color:#58a6ff;'><b>Agente:</b> Hola, soy tu asistente de IA. ¿En qué puedo ayudarte con el brazo robótico?</span>")
         
-        # Añadimos la consola al layout global con factor de expansión 0 (fijo abajo)
+        self.chat_input = QLineEdit()
+        self.chat_input.setPlaceholderText("Escribe un mensaje al agente (ej: 'Qué ves en la escena?')...")
+        self.chat_input.returnPressed.connect(self.send_to_ai)
+        
+        btn_send_chat = QPushButton("ENVIAR A IA")
+        btn_send_chat.clicked.connect(self.send_to_ai)
+        btn_send_chat.setStyleSheet("background-color: #238636; color: white; font-weight: bold;")
+        
+        chat_layout.addWidget(QLabel("CHAT CON AGENTE (Visual):"))
+        chat_layout.addWidget(self.chat_history)
+        chat_input_row = QHBoxLayout()
+        chat_input_row.addWidget(self.chat_input)
+        chat_input_row.addWidget(btn_send_chat)
+        chat_layout.addLayout(chat_input_row)
+        
+        self.bottom_splitter.addWidget(chat_widget)
+        
+        console_main_layout.addWidget(self.bottom_splitter)
+        self.console_container.setLayout(console_main_layout)
+        
+        self.bottom_splitter.hide() # Empezamos con el contenido oculto
+        
+        # Añadimos la consola al layout global
         self.global_layout.addWidget(self.console_container, 0)
-        
-        self.ai_console.hide() # Empezamos con la caja de texto oculta
+
         
         # Ahora que todo está inicializado, refrescamos los puertos
         self.refresh_ports()
@@ -213,16 +256,57 @@ class ExperimentLabUI(QMainWindow):
 
     def toggle_console(self):
         """Muestra/Oculta la caja de texto de la consola de forma limpia."""
-        if self.ai_console.isVisible():
-            self.ai_console.hide()
-            self.btn_toggle_console.setText("▲ EXPANDIR CONSOLA")
+        if self.bottom_splitter.isVisible():
+            self.bottom_splitter.hide()
+            self.btn_toggle_console.setText("▲ EXPANDIR PANEL")
         else:
-            self.ai_console.show()
-            self.btn_toggle_console.setText("▼ MINIMIZAR CONSOLA")
+            self.bottom_splitter.show()
+            self.btn_toggle_console.setText("▼ MINIMIZAR PANEL")
         
         # Forzamos al layout a re-calcular el espacio
         self.global_layout.invalidate()
         self.global_layout.activate()
+
+    def send_to_ai(self):
+        """Envía el comando del chat a la IA junto con screenshot y estado."""
+        prompt = self.chat_input.text().strip()
+        if not prompt:
+            return
+            
+        self.chat_history.append(f"<br><span style='color:#7986CB;'><b>Usuario:</b> {prompt}</span>")
+        self.chat_input.clear()
+        self.chat_input.setDisabled(True)
+        
+        # 1. Solicitar captura de pantalla
+        self.ai_console.append(">> [AI] Capturando escena simulación...")
+        self.comm.request_screenshot(self.temp_screenshot_path)
+        
+        # 2. Esperar delay para escritura y llamar en hilo para no bloquear
+        # Usamos QTimer para dar tiempo al disco/sim y luego procesamos
+        QTimer.singleShot(300, lambda: self._process_ai_query(prompt))
+
+    def _process_ai_query(self, prompt):
+        """Recopila datos y consulta al agente en segundo plano."""
+        state = {
+            "angles": self.current_angles,
+            "collision": getattr(self, "last_feedback", {}).get("colliding", False),
+            "timestamp": time.time()
+        }
+        
+        # Para no bloquear el hilo principal de Qt, idealmente usaríamos un QThread,
+        # pero para esta versión, llamaremos al agente que ya tiene su manejo de tiempo.
+        # Nota: requests.post en query_with_image es bloqueante, en una app de producción
+        # esto debería ir en un WorkerThread.
+        try:
+            response = self.ai_agent.query_with_image(prompt, self.temp_screenshot_path, state)
+            self.chat_history.append(f"<span style='color:#4CAF50;'><b>Agente:</b> {response}</span>")
+        except Exception as e:
+            self.chat_history.append(f"<span style='color:#f44336;'><b>Agente (Error):</b> No pude procesar la consulta. {e}</span>")
+        
+        self.chat_input.setDisabled(False)
+        self.chat_input.setFocus()
+        # Scroll al final
+        self.chat_history.verticalScrollBar().setValue(self.chat_history.verticalScrollBar().maximum())
 
     def launch_simulation(self):
         """Lanza la simulación Ursina incrustada."""

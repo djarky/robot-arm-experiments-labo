@@ -43,6 +43,12 @@ class LabCommunication:
         msg = json.dumps({"type": "camera_offset", "data": offsets})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
+    def request_screenshot(self, path):
+        """Solicita a la simulación que guarde una captura en el path indicado."""
+        msg = json.dumps({"type": "screenshot", "path": path})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
+
     def connect_arduino(self, port, baud=115200):
         try:
             self.ser = serial.Serial(port, baud, timeout=0.1)
