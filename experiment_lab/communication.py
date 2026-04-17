@@ -52,11 +52,24 @@ class LabCommunication:
     def connect_arduino(self, port, baud=115200):
         try:
             self.ser = serial.Serial(port, baud, timeout=0.1)
-            time.sleep(2.0) # Wait for reset
+            
+            # Use 3s timeout to allow Arduino setup() scan to finish
+            print(f"[Comm] Esperando inicialización de Arduino en {port}...")
+            time.sleep(3.0)
+            
+            self.ser.reset_input_buffer()
             print(f"[Comm] Arduino conectado en {port}")
             return True
+        except serial.SerialException as e:
+            err = str(e)
+            if "Permission denied" in err or "[Errno 13]" in err:
+                print(f"[Comm] ERROR PERMISOS: Usuario no está en grupo 'dialout'.")
+                print("       Ejecute: sudo usermod -aG dialout $USER y REINICIE SESION.")
+            else:
+                print(f"[Comm] Error serial: {e}")
+            return False
         except Exception as e:
-            print(f"[Comm] Error serial: {e}")
+            print(f"[Comm] Error inesperado: {e}")
             return False
 
     def get_feedback(self):

@@ -15,7 +15,7 @@
         "toggle_console": 6
     },
     "deadzone": 0.1,
-    "controller_style": "Xbox",
+    "controller_style": "Wiimote",
     "profiles": {
         "KM": {
             "axes": {},
@@ -44,7 +44,24 @@
                 "base": 103
             },
             "buttons": {},
-            "inputs": {}
+            "inputs": {
+                "base_pos": {
+                    "type": "button",
+                    "id": 105
+                },
+                "base_neg": {
+                    "type": "button",
+                    "id": 106
+                },
+                "shoulder_pos": {
+                    "type": "button",
+                    "id": 105
+                },
+                "shoulder_neg": {
+                    "type": "button",
+                    "id": 106
+                }
+            }
         },
         "/dev/input/event4": {
             "axes": {
@@ -64,48 +81,65 @@
             "inputs": {
                 "base_pos": {
                     "type": "button",
-                    "id": 308
-                },
-                "base_neg": {
-                    "type": "button",
-                    "id": 307
+                    "id": 305
                 },
                 "shoulder_pos": {
                     "type": "button",
-                    "id": 307
+                    "id": 305
                 },
-                "j4_pos": {
+                "shoulder_neg": {
                     "type": "button",
-                    "id": 308
+                    "id": 310
                 },
-                "cam_x_pos": {
+                "elbow_pos": {
                     "type": "button",
-                    "id": 309
+                    "id": 305
                 },
-                "cam_x_neg": {
+                "j3_pos": {
                     "type": "button",
-                    "id": 307
+                    "id": 304
                 },
-                "j5_pos": {
+                "j3_neg": {
                     "type": "button",
-                    "id": 308
+                    "id": 304
                 },
-                "j5_neg": {
-                    "type": "button",
-                    "id": 307
-                },
-                "cam_y_pos": {
+                "j4_neg": {
                     "type": "button",
                     "id": 309
+                }
+            },
+            "deadzone": 0.0
+        },
+        "DSU": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {}
+        },
+        "Wiimote": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {}
+        },
+        "WIIMOTE_AUTO": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {
+                "base_pos": {
+                    "type": "axis",
+                    "id": 5
                 },
-                "cam_zoom_neg": {
-                    "type": "button",
-                    "id": 309
+                "shoulder_pos": {
+                    "type": "axis",
+                    "id": 4
+                },
+                "elbow_pos": {
+                    "type": "axis",
+                    "id": 3
                 }
             }
         }
     },
-    "active_category": "Otros (Custom)",
-    "active_device_id": "/dev/input/event5",
+    "active_category": "Wiimote",
+    "active_device_id": "WIIMOTE_AUTO",
     "force_raw_udev": true
 }

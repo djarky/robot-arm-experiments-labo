@@ -496,6 +496,18 @@ class ExperimentLabUI(QMainWindow):
         except Exception as e:
             print(f"[Lab] Error al guardar pose: {e}")
 
+    def keyPressEvent(self, event):
+        """Captura teclas presionadas y las inyecta al sistema de entrada."""
+        if not event.isAutoRepeat():
+            self.input_mgr.inject_key_event(event.key(), True)
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        """Captura teclas soltadas y actualiza el sistema de entrada."""
+        if not event.isAutoRepeat():
+            self.input_mgr.inject_key_event(event.key(), False)
+        super().keyReleaseEvent(event)
+
     def main_loop(self):
         # 1. Leer entradas de la simulación (Feedback) - Vaciado completo del buffer
         fb = self.comm.get_feedback()
@@ -539,7 +551,10 @@ class ExperimentLabUI(QMainWindow):
                 self.sliders[i].blockSignals(False)
 
         # UI status mando...
-        if self.input_mgr.initialized:
+        if self.input_mgr.active_device_id == "KM":
+            self.input_status.setText("Teclado: Activo")
+            self.input_status.setStyleSheet("color: #4CAF50;")
+        elif self.input_mgr.initialized and self.input_mgr.joystick:
             self.input_status.setText(f"Mando: {self.input_mgr.joystick.get_name()}")
             self.input_status.setStyleSheet("color: #4CAF50;")
         elif self.input_mgr.wiimote_active:
