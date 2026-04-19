@@ -3,6 +3,8 @@ import os
 import json
 import subprocess
 import time
+import threading
+import queue
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QTextEdit, QFrame, QGroupBox,
@@ -42,6 +44,7 @@ class ExperimentLabUI(QMainWindow):
         self.last_sent_angles = [0.0] * 6
         self.last_interaction_time = 0
         self.sim_process = None
+        self.log_queue = queue.Queue()
         
         self.init_ui()
         
@@ -314,9 +317,9 @@ class ExperimentLabUI(QMainWindow):
         w = str(self.sim_view.width())
         h = str(self.sim_view.height())
         
-        # Usar el venv del proyecto
+        # Usar el mismo ejecutable de Python que esta corriendo el lab
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        python_exe = os.path.join(base_dir, "venv", "bin", "python3")
+        python_exe = sys.executable
         sim_script = os.path.join(base_dir, "sim_3d.py")
         
         # Forzar X11 para la simulación también si es Linux
@@ -335,30 +338,41 @@ class ExperimentLabUI(QMainWindow):
             )
             self.ai_console.append(f">> Simulación lanzada en Window ID: {win_id}")
             
-            # Hilo para leer logs de la simulación
+            # Hilo para leer logs de la simulación de forma no bloqueante (Compatible con Windows)
+            self.log_thread = threading.Thread(target=self._log_reader_worker, args=(self.sim_process.stdout,), daemon=True)
+            self.log_thread.start()
+
+            # Timer para procesar la cola de logs en el hilo principal de la GUI
             self.log_timer = QTimer()
             self.log_timer.timeout.connect(self.read_sim_logs)
             self.log_timer.start(100)
         except Exception as e:
             self.ai_console.append(f">> ERROR al lanzar simulación: {e}")
 
-    def read_sim_logs(self):
-        if self.sim_process and self.sim_process.stdout:
-            while True:
-                # Leer línea de forma no bloqueante
-                import select
-                # Comprobar si hay datos
-                if select.select([self.sim_process.stdout], [], [], 0)[0]:
-                    line = self.sim_process.stdout.readline()
-                    if line:
-                        print(f"[Sim] {line.strip()}")
-                        # Solo mostrar errores o avisos importantes en la consola del lab
-                        if "Error" in line or "fail" in line.lower():
-                            self.ai_console.append(f"<span style='color:red;'>[Sim] {line.strip()}</span>")
-                    else:
-                        break
+    def _log_reader_worker(self, stdout):
+        """Hilo secundario que lee el stdout del subproceso y lo mete en la cola."""
+        try:
+            for line in iter(stdout.readline, ''):
+                if line:
+                    self.log_queue.put(line)
                 else:
                     break
+        except Exception:
+            pass
+        finally:
+            stdout.close()
+
+    def read_sim_logs(self):
+        """Procesa los logs acumulados en la cola y los muestra en la consola."""
+        while not self.log_queue.empty():
+            try:
+                line = self.log_queue.get_nowait()
+                print(f"[Sim] {line.strip()}")
+                # Solo mostrar errores o avisos importantes en la consola del lab
+                if "Error" in line or "fail" in line.lower():
+                    self.ai_console.append(f"<span style='color:red;'>[Sim] {line.strip()}</span>")
+            except queue.Empty:
+                break
 
     def toggle_arduino(self):
         if not self.comm.ser or not self.comm.ser.is_open:
