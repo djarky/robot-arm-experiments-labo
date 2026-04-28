@@ -8,7 +8,7 @@ import queue
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QTextEdit, QFrame, QGroupBox,
-    QSplitter, QSlider, QCheckBox, QLineEdit, QDoubleSpinBox
+    QSplitter, QSlider, QCheckBox, QLineEdit, QDoubleSpinBox, QFileDialog
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QColor, QPalette
@@ -181,8 +181,10 @@ class ExperimentLabUI(QMainWindow):
         spawn_row = QHBoxLayout()
         spawn_row.addWidget(QLabel("Spawn:"))
         self.obj_type = QComboBox()
-        self.obj_type.addItems(["cube", "cylinder", "sphere", "torus"])
+        self.obj_type.addItems(["cube", "cylinder", "sphere", "torus", "custom..."])
         self.obj_type.setMinimumWidth(100)
+        self.obj_type.currentIndexChanged.connect(self.on_spawn_type_changed)
+        self.custom_model_path = None
         
         self.obj_size = QDoubleSpinBox()
         self.obj_size.setValue(0.5)
@@ -548,8 +550,36 @@ class ExperimentLabUI(QMainWindow):
         size = self.obj_size.value()
         mass = self.obj_mass.value()
         
+        model_path = None
+        if obj_type == "custom...":
+            if not self.custom_model_path:
+                self.ai_console.append("!! ERROR: No se ha seleccionado un archivo para el spawn custom.")
+                return
+            obj_type = "custom"
+            model_path = self.custom_model_path
+        
         self.ai_console.append(f">> [Spawn] Solicitando {obj_type} (S:{size}, M:{mass})")
-        self.comm.spawn_object(obj_type, size, mass)
+        self.comm.spawn_object(obj_type, size, mass, model_path=model_path)
+
+    def on_spawn_type_changed(self, index):
+        """Maneja el cambio en el selector de tipo de objeto."""
+        if self.obj_type.currentText() == "custom...":
+            path, _ = QFileDialog.getOpenFileName(
+                self, 
+                "Seleccionar Modelo 3D", 
+                os.path.dirname(os.path.dirname(__file__)), 
+                "Modelos 3D (*.glb *.gltf *.obj)"
+            )
+            if path:
+                self.custom_model_path = path
+                filename = os.path.basename(path)
+                self.ai_console.append(f">> [Spawn] Archivo cargado: {filename}")
+                # Podríamos cambiar el texto del item o mostrarlo en un label, 
+                # pero por ahora lo dejamos en la variable interna.
+            else:
+                # Si cancela, volvemos al primero (cube)
+                self.obj_type.setCurrentIndex(0)
+                self.custom_model_path = None
 
     def keyPressEvent(self, event):
         """Captura teclas presionadas y las inyecta al sistema de entrada."""

@@ -48,14 +48,18 @@ class LabCommunication:
         msg = json.dumps({"type": "screenshot", "path": path})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
-    def spawn_object(self, obj_type, size, mass):
+    def spawn_object(self, obj_type, size, mass, model_path=None):
         """Envía una solicitud para spawnear un objeto en la simulación."""
-        msg = json.dumps({
+        msg_dict = {
             "type": "spawn",
             "shape": obj_type,
             "size": size,
             "mass": mass,
-        })
+        }
+        if model_path:
+            msg_dict["model_path"] = model_path
+            
+        msg = json.dumps(msg_dict)
         self.sock.sendto(msg.encode(), self.sim_addr)
 
 
