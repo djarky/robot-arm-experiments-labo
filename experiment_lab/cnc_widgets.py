@@ -8,47 +8,72 @@ import os
 class CNCControlWidget(QGroupBox):
     """
     Widget modular para el control de trayectorias CNC basadas en SVG.
+    Modos:
+    - idle: No hay SVG cargado.
+    - positioning: SVG cargado, el usuario puede mover/rotar/escalar con el Gizmo.
+    - running: El brazo está ejecutando la trayectoria.
     """
     # Señales para comunicar con la ventana principal del Lab
     start_requested = Signal()
     stop_requested = Signal()
     file_selected = Signal(str)
 
+    MODE_IDLE = "idle"
+    MODE_POSITIONING = "positioning"
+    MODE_RUNNING = "running"
+
     def __init__(self, parent=None):
         super().__init__("Trayectoria CNC (SVG)", parent)
         self.current_svg_path = None
+        self.mode = self.MODE_IDLE
         self.init_ui()
+        self._update_ui_for_mode()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
         
+        # Estado / Modo actual
+        self.lbl_mode = QLabel("MODO: INACTIVO")
+        self.lbl_mode.setAlignment(Qt.AlignCenter)
+        self.lbl_mode.setStyleSheet(
+            "font-weight: bold; font-size: 11px; padding: 4px; "
+            "background-color: #222; color: #666; border-radius: 3px;"
+        )
+        layout.addWidget(self.lbl_mode)
+        
         # Info de archivo
-        self.lbl_status = QLabel("SVG: Ninguno cargado")
-        self.lbl_status.setWordWrap(True)
-        self.lbl_status.setStyleSheet("color: #888; font-style: italic;")
-        layout.addWidget(self.lbl_status)
+        self.lbl_file = QLabel("Archivo: Ninguno")
+        self.lbl_file.setWordWrap(True)
+        self.lbl_file.setStyleSheet("color: #888; font-style: italic; font-size: 10px;")
+        layout.addWidget(self.lbl_file)
         
         # Botones de Acción
         btn_row = QHBoxLayout()
         
-        self.btn_load = QPushButton("Cargar SVG")
+        self.btn_load = QPushButton("📂 Cargar SVG")
         self.btn_load.clicked.connect(self.on_load_clicked)
         self.btn_load.setStyleSheet("background-color: #333;")
         
-        self.btn_start = QPushButton("INICIAR")
+        self.btn_start = QPushButton("▶ INICIAR")
         self.btn_start.setEnabled(False)
-        self.btn_start.clicked.connect(self.start_requested.emit)
+        self.btn_start.clicked.connect(self._on_start)
         self.btn_start.setStyleSheet("background-color: #2e7d32; font-weight: bold;")
         
-        self.btn_stop = QPushButton("STOP")
+        self.btn_stop = QPushButton("■ STOP")
         self.btn_stop.setEnabled(False)
-        self.btn_stop.clicked.connect(self.stop_requested.emit)
+        self.btn_stop.clicked.connect(self._on_stop)
         self.btn_stop.setStyleSheet("background-color: #c62828; font-weight: bold;")
         
         btn_row.addWidget(self.btn_load)
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_stop)
         layout.addLayout(btn_row)
+        
+        # Instrucciones contextuales
+        self.lbl_hint = QLabel("")
+        self.lbl_hint.setWordWrap(True)
+        self.lbl_hint.setStyleSheet("color: #666; font-size: 9px; padding: 2px;")
+        layout.addWidget(self.lbl_hint)
         
         # Barra de Progreso
         self.progress = QProgressBar()
@@ -59,12 +84,6 @@ class CNCControlWidget(QGroupBox):
             QProgressBar::chunk { background-color: #4CAF50; }
         """)
         layout.addWidget(self.progress)
-        
-        # Opciones adicionales
-        self.btn_reset = QPushButton("Reset Posición Blueprint")
-        self.btn_reset.clicked.connect(self.on_reset_clicked)
-        self.btn_reset.setStyleSheet("font-size: 10px; color: #bbb;")
-        layout.addWidget(self.btn_reset)
 
     def on_load_clicked(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -77,19 +96,71 @@ class CNCControlWidget(QGroupBox):
     def set_svg_file(self, path):
         self.current_svg_path = path
         filename = os.path.basename(path)
-        self.lbl_status.setText(f"SVG: {filename}")
-        self.lbl_status.setStyleSheet("color: #4CAF50; font-weight: bold;")
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(True)
+        self.lbl_file.setText(f"Archivo: {filename}")
+        self.lbl_file.setStyleSheet("color: #4CAF50; font-weight: bold; font-size: 10px;")
 
-    def on_reset_clicked(self):
-        # Esta funcionalidad se comunicará vía lab_main -> comm -> sim
-        pass
+    def set_mode_positioning(self):
+        """Cambia al modo de posicionamiento (SVG cargado, listo para mover)."""
+        self.mode = self.MODE_POSITIONING
+        self.progress.setValue(0)
+        self._update_ui_for_mode()
+
+    def set_running(self, running):
+        """Cambia entre modo ejecución y posicionamiento."""
+        if running:
+            self.mode = self.MODE_RUNNING
+        else:
+            self.mode = self.MODE_POSITIONING
+        self._update_ui_for_mode()
 
     def update_progress(self, val):
         self.progress.setValue(val)
-        
-    def set_running(self, running):
-        self.btn_start.setEnabled(not running)
-        self.btn_load.setEnabled(not running)
-        self.btn_stop.setEnabled(True)
+
+    def _on_start(self):
+        self.mode = self.MODE_RUNNING
+        self._update_ui_for_mode()
+        self.start_requested.emit()
+
+    def _on_stop(self):
+        self.mode = self.MODE_POSITIONING
+        self._update_ui_for_mode()
+        self.stop_requested.emit()
+
+    def _update_ui_for_mode(self):
+        """Actualiza la apariencia de todos los controles según el modo actual."""
+        if self.mode == self.MODE_IDLE:
+            self.lbl_mode.setText("MODO: INACTIVO")
+            self.lbl_mode.setStyleSheet(
+                "font-weight: bold; font-size: 11px; padding: 4px; "
+                "background-color: #222; color: #666; border-radius: 3px;"
+            )
+            self.btn_load.setEnabled(True)
+            self.btn_start.setEnabled(False)
+            self.btn_stop.setEnabled(False)
+            self.lbl_hint.setText("Carga un archivo SVG para comenzar.")
+            
+        elif self.mode == self.MODE_POSITIONING:
+            self.lbl_mode.setText("MODO: POSICIONAMIENTO")
+            self.lbl_mode.setStyleSheet(
+                "font-weight: bold; font-size: 11px; padding: 4px; "
+                "background-color: #1a237e; color: #7986CB; border-radius: 3px;"
+            )
+            self.btn_load.setEnabled(True)
+            self.btn_start.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.lbl_hint.setText(
+                "Haz clic en el holograma para seleccionarlo. "
+                "Usa G (mover), R (rotar), S (escalar) para posicionarlo. "
+                "Presiona INICIAR cuando esté listo."
+            )
+            
+        elif self.mode == self.MODE_RUNNING:
+            self.lbl_mode.setText("MODO: EJECUTANDO ▶")
+            self.lbl_mode.setStyleSheet(
+                "font-weight: bold; font-size: 11px; padding: 4px; "
+                "background-color: #1b5e20; color: #81C784; border-radius: 3px;"
+            )
+            self.btn_load.setEnabled(False)
+            self.btn_start.setEnabled(False)
+            self.btn_stop.setEnabled(True)
+            self.lbl_hint.setText("El brazo está siguiendo la trayectoria. Presiona STOP para detener.")

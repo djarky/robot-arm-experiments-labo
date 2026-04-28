@@ -632,6 +632,27 @@ class ExperimentLabUI(QMainWindow):
                     self.sync_ui_from_sim(angles)
             elif fb.get("type") == "collision_status" and fb.get("colliding"):
                 self.ai_console.append("!! ALERTA: Colisión detectada en simulación.")
+            elif fb.get("type") == "cnc_status":
+                status = fb.get("status", "")
+                progress = fb.get("progress", 0)
+                error_msg = fb.get("error")
+                
+                if status == "loaded":
+                    self.cnc_ctrl.set_mode_positioning()
+                    self.ai_console.append(">> [CNC] Blueprint cargado. Posiciona con Gizmo y presiona INICIAR.")
+                elif status == "running":
+                    self.cnc_ctrl.set_running(True)
+                    self.cnc_ctrl.update_progress(progress)
+                elif status == "completed":
+                    self.cnc_ctrl.set_running(False)
+                    self.cnc_ctrl.update_progress(100)
+                    self.ai_console.append(">> [CNC] Trayectoria completada.")
+                elif status == "stopped":
+                    self.cnc_ctrl.set_running(False)
+                    self.ai_console.append(">> [CNC] Trayectoria detenida.")
+                elif status == "error":
+                    self.cnc_ctrl.set_running(False)
+                    self.ai_console.append(f"!! [CNC] Error: {error_msg}")
 
         # 2. Leer entradas de mandos (Necesario antes de la FSM para los triggers)
         joy_inputs, actions, camera_inputs = self.input_mgr.get_arm_inputs()
