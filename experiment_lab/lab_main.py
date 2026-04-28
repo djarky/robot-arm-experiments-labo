@@ -8,7 +8,8 @@ import queue
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QTextEdit, QFrame, QGroupBox,
-    QSplitter, QSlider, QCheckBox, QLineEdit, QDoubleSpinBox, QFileDialog
+    QSplitter, QSlider, QCheckBox, QLineEdit, QDoubleSpinBox, QFileDialog,
+    QScrollArea
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QColor, QPalette
@@ -18,6 +19,7 @@ from input_manager import InputManager
 from input_mapper_dialog import InputMapperDialog
 from fsm_engine import FSMEngine
 from ai_agent import AIAgent
+from cnc_widgets import CNCControlWidget
 # El import de FSMDesignerWindow se hará dinámicamente o al principio
 
 class ExperimentLabUI(QMainWindow):
@@ -81,12 +83,21 @@ class ExperimentLabUI(QMainWindow):
         top_layout.setContentsMargins(0, 0, 0, 0)
         self.top_splitter = QSplitter(Qt.Horizontal)
         
-        # PANEL IZQUIERDO (Controles)
+        # PANEL IZQUIERDO (Controles con Scroll)
+        self.left_scroll = QScrollArea()
+        self.left_scroll.setWidgetResizable(True)
+        self.left_scroll.setFrameShape(QFrame.NoFrame)
+        self.left_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.left_scroll.setStyleSheet("background-color: transparent;")
+
         left_panel_widget = QWidget()
+        left_panel_widget.setStyleSheet("background-color: transparent;")
         left_panel = QVBoxLayout(left_panel_widget)
+        left_panel.setContentsMargins(5, 5, 5, 5)
         
         # Conexión Hardware
         conn_group = QGroupBox("Hardware / Arduino")
+        # ... (rest of the widgets stay the same, they are added to left_panel)
         conn_layout = QVBoxLayout()
         
         # Filtro de puertos
@@ -170,9 +181,17 @@ class ExperimentLabUI(QMainWindow):
         fsm_design_group.setLayout(fsm_design_layout)
         left_panel.addWidget(fsm_design_group)
 
+        # --- CNC CONTROL WIDGET ---
+        self.cnc_ctrl = CNCControlWidget()
+        self.cnc_ctrl.file_selected.connect(self.comm.load_svg)
+        self.cnc_ctrl.start_requested.connect(self.comm.start_svg_trajectory)
+        self.cnc_ctrl.stop_requested.connect(self.comm.stop_svg_trajectory)
+        left_panel.addWidget(self.cnc_ctrl)
+
         left_panel.addStretch()
         
-        self.top_splitter.addWidget(left_panel_widget)
+        self.left_scroll.setWidget(left_panel_widget)
+        self.top_splitter.addWidget(self.left_scroll)
         
         # PANEL CENTRAL (Simulación Ursina)
         self.sim_container = QGroupBox("Visualización 3D (Ursina)")
@@ -181,7 +200,7 @@ class ExperimentLabUI(QMainWindow):
         spawn_row = QHBoxLayout()
         spawn_row.addWidget(QLabel("Spawn:"))
         self.obj_type = QComboBox()
-        self.obj_type.addItems(["cube", "cylinder", "sphere", "torus", "custom..."])
+        self.obj_type.addItems(["cube", "cylinder", "sphere", "torus", "svg", "custom..."])
         self.obj_type.setMinimumWidth(100)
         self.obj_type.currentIndexChanged.connect(self.on_spawn_type_changed)
         self.custom_model_path = None
@@ -574,12 +593,20 @@ class ExperimentLabUI(QMainWindow):
                 self.custom_model_path = path
                 filename = os.path.basename(path)
                 self.ai_console.append(f">> [Spawn] Archivo cargado: {filename}")
-                # Podríamos cambiar el texto del item o mostrarlo en un label, 
-                # pero por ahora lo dejamos en la variable interna.
             else:
-                # Si cancela, volvemos al primero (cube)
                 self.obj_type.setCurrentIndex(0)
                 self.custom_model_path = None
+        elif self.obj_type.currentText() == "svg":
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Cargar Vector SVG", "", "Archivos SVG (*.svg)"
+            )
+            if path:
+                self.custom_svg_path = path
+                self.cnc_ctrl.set_svg_file(path)
+                self.comm.load_svg(path)
+                self.ai_console.append(f">> [CNC] SVG cargado: {os.path.basename(path)}")
+            else:
+                self.obj_type.setCurrentIndex(0)
 
     def keyPressEvent(self, event):
         """Captura teclas presionadas y las inyecta al sistema de entrada."""

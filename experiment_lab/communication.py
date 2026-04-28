@@ -62,6 +62,21 @@ class LabCommunication:
         msg = json.dumps(msg_dict)
         self.sock.sendto(msg.encode(), self.sim_addr)
 
+    def load_svg(self, path):
+        """Envía la ruta de un archivo SVG a la simulación para crear el blueprint."""
+        msg = json.dumps({"type": "load_svg", "path": path})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
+    def start_svg_trajectory(self):
+        """Inicia la ejecución de la trayectoria cargada."""
+        msg = json.dumps({"type": "start_svg_trajectory"})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
+    def stop_svg_trajectory(self):
+        """Detiene la ejecución de la trayectoria inmediatamente."""
+        msg = json.dumps({"type": "stop_svg_trajectory"})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
 
     def connect_arduino(self, port, baud=115200):
         try:
