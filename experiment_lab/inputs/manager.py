@@ -225,7 +225,10 @@ class InputManager:
 
         elif category == "DSU":
             self._active_handler = self._dsu_handler
-            self._active_handler.activate(device_id)
+            # Recuperar configuración de IP/Puerto
+            host = self.custom_config.get("dsu_host", "127.0.0.1")
+            port = self.custom_config.get("dsu_port", 26760)
+            self._active_handler.activate(device_id, host=host, port=port)
 
         elif device_id == "KM":
             self._active_handler = self._pygame_handler
@@ -308,7 +311,9 @@ class InputManager:
         self.custom_config = {
             "profiles": {},
             "deadzone": 0.1,
-            "controller_style": "Xbox"
+            "controller_style": "Xbox",
+            "dsu_host": "127.0.0.1",
+            "dsu_port": 26760
         }
 
     def get_current_binds(self):

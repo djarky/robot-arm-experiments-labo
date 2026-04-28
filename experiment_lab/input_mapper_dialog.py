@@ -2,7 +2,7 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
     QWidget, QFrame, QGridLayout, QComboBox, QScrollArea, QCheckBox,
-    QSlider
+    QSlider, QLineEdit
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QFont, QColor
@@ -185,6 +185,35 @@ class InputMapperDialog(QDialog):
         pair_row.addStretch()
         pair_row.addWidget(self.btn_pair)
         left_layout.addLayout(pair_row)
+        
+        # DSU Config Row
+        self.dsu_container = QWidget()
+        dsu_vbox = QVBoxLayout(self.dsu_container)
+        dsu_vbox.setContentsMargins(0, 0, 0, 0)
+        
+        dsu_title = QLabel("CONFIGURACIÓN SERVIDOR DSU (UDP)")
+        dsu_title.setStyleSheet("color: #4CAF50; font-weight: bold; margin-top: 10px;")
+        dsu_vbox.addWidget(dsu_title)
+        
+        dsu_ip_hbox = QHBoxLayout()
+        dsu_ip_hbox.addWidget(QLabel("IP Servidor:"))
+        self.dsu_ip_input = QLineEdit()
+        self.dsu_ip_input.setPlaceholderText("127.0.0.1")
+        self.dsu_ip_input.setText(self.input_mgr.custom_config.get("dsu_host", "127.0.0.1"))
+        self.dsu_ip_input.textChanged.connect(self.on_dsu_config_changed)
+        dsu_ip_hbox.addWidget(self.dsu_ip_input)
+        
+        dsu_ip_hbox.addWidget(QLabel("Puerto:"))
+        self.dsu_port_input = QLineEdit()
+        self.dsu_port_input.setPlaceholderText("26760")
+        self.dsu_port_input.setText(str(self.input_mgr.custom_config.get("dsu_port", 26760)))
+        self.dsu_port_input.setFixedWidth(80)
+        self.dsu_port_input.textChanged.connect(self.on_dsu_config_changed)
+        dsu_ip_hbox.addWidget(self.dsu_port_input)
+        
+        dsu_vbox.addLayout(dsu_ip_hbox)
+        left_layout.addWidget(self.dsu_container)
+        self.dsu_container.hide()
         
         self.ctrl_img = QLabel()
         self.ctrl_img.setAlignment(Qt.AlignCenter)
@@ -405,6 +434,7 @@ class InputMapperDialog(QDialog):
         self.input_mgr.custom_config["controller_style"] = style_map.get(category, "Xbox")
         self.update_diagram()
         self.btn_pair.setVisible(category == "Wiimote")
+        self.dsu_container.setVisible(category == "DSU")
         
         if self.hw_selector.count() > 0:
             self.on_hardware_changed(0)
@@ -445,6 +475,23 @@ class InputMapperDialog(QDialog):
             self.ctrl_img.setPixmap(pix)
         else:
             self.ctrl_img.setText(f"IMAGEN {style} NO ENCONTRADA")
+
+    def on_dsu_config_changed(self):
+        """Actualiza la configuración de DSU en tiempo real."""
+        host = self.dsu_ip_input.text().strip()
+        port_str = self.dsu_port_input.text().strip()
+        
+        try:
+            port = int(port_str)
+        except ValueError:
+            port = 26760
+            
+        self.input_mgr.custom_config["dsu_host"] = host
+        self.input_mgr.custom_config["dsu_port"] = port
+        
+        # Si DSU está activo, reiniciarlo con la nueva config
+        if self.input_mgr.active_category == "DSU":
+            self.input_mgr.set_active_device("DSU", "DSU")
 
     def on_pair_clicked(self):
         self.btn_pair.setEnabled(False)
