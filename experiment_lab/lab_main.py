@@ -8,7 +8,7 @@ import queue
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QTextEdit, QFrame, QGroupBox,
-    QSplitter, QSlider, QCheckBox, QLineEdit
+    QSplitter, QSlider, QCheckBox, QLineEdit, QDoubleSpinBox
 )
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QFont, QColor, QPalette
@@ -36,6 +36,8 @@ class ExperimentLabUI(QMainWindow):
             QPushButton#btn_connect { background-color: #2e7d32; }
             QLabel { color: #bbb; }
             QTextEdit { background-color: #000; color: #00ff00; border: 1px solid #222; font-family: 'Courier New'; }
+            QComboBox, QDoubleSpinBox { background-color: #1e1e1e; border: 1px solid #444; color: white; padding: 3px; border-radius: 4px; }
+            QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { background: #333; border: none; width: 16px; }
         """)
 
         self.comm = LabCommunication()
@@ -175,6 +177,36 @@ class ExperimentLabUI(QMainWindow):
         # PANEL CENTRAL (Simulación Ursina)
         self.sim_container = QGroupBox("Visualización 3D (Ursina)")
         sim_layout = QVBoxLayout()
+        # Spawn Bar (Similar a gui_main)
+        spawn_row = QHBoxLayout()
+        spawn_row.addWidget(QLabel("Spawn:"))
+        self.obj_type = QComboBox()
+        self.obj_type.addItems(["cube", "cylinder", "sphere", "torus"])
+        self.obj_type.setMinimumWidth(100)
+        
+        self.obj_size = QDoubleSpinBox()
+        self.obj_size.setValue(0.5)
+        self.obj_size.setRange(0.1, 10.0)
+        self.obj_size.setSingleStep(0.1)
+        
+        self.obj_mass = QDoubleSpinBox()
+        self.obj_mass.setValue(1.0)
+        self.obj_mass.setRange(0.1, 100.0)
+        
+        self.btn_spawn = QPushButton("SPAWN")
+        self.btn_spawn.setStyleSheet("background-color: #1a237e; font-weight: bold;")
+        self.btn_spawn.clicked.connect(self.spawn_request)
+        
+        spawn_row.addWidget(self.obj_type)
+        spawn_row.addWidget(QLabel("S:"))
+        spawn_row.addWidget(self.obj_size)
+        spawn_row.addWidget(QLabel("M:"))
+        spawn_row.addWidget(self.obj_mass)
+        spawn_row.addWidget(self.btn_spawn)
+        spawn_row.addStretch()
+        
+        sim_layout.addLayout(spawn_row)
+        
         self.sim_view = QWidget()
         self.sim_view.setStyleSheet("background-color: #000;")
         self.sim_view.setMinimumSize(500, 400)
@@ -509,6 +541,15 @@ class ExperimentLabUI(QMainWindow):
             print(f"[Lab] Pose guardada: {pose_name}")
         except Exception as e:
             print(f"[Lab] Error al guardar pose: {e}")
+
+    def spawn_request(self):
+        """Recoge los datos de la UI y solicita el spawn al sistema de comunicación."""
+        obj_type = self.obj_type.currentText()
+        size = self.obj_size.value()
+        mass = self.obj_mass.value()
+        
+        self.ai_console.append(f">> [Spawn] Solicitando {obj_type} (S:{size}, M:{mass})")
+        self.comm.spawn_object(obj_type, size, mass)
 
     def keyPressEvent(self, event):
         """Captura teclas presionadas y las inyecta al sistema de entrada."""

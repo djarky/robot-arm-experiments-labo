@@ -48,6 +48,16 @@ class LabCommunication:
         msg = json.dumps({"type": "screenshot", "path": path})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
+    def spawn_object(self, obj_type, size, mass):
+        """Envía una solicitud para spawnear un objeto en la simulación."""
+        msg = json.dumps({
+            "type": "spawn",
+            "shape": obj_type,
+            "size": size,
+            "mass": mass,
+        })
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
 
     def connect_arduino(self, port, baud=115200):
         try:
