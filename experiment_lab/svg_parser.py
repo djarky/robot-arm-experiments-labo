@@ -110,28 +110,30 @@ class SVGInterpreter:
             points.append((x, z))
         return points
 
-    def get_world_waypoints(self, svg_paths, origin=(0,0,0), rotation=0, scale=1.0):
+    def get_world_waypoints(self, svg_paths, origin=(0,0,0), rotation=0, scale=1.0, offset=(0,0)):
         """
         Convierte los puntos 2D del SVG a 3D (X, Y, Z) en el mundo de Ursina.
+        offset: Desplazamiento local (cx, cz) aplicado al mesh para centrarlo.
         """
         world_paths = []
+        cx, cz = offset
         for path in svg_paths:
             world_points = []
             for wp in path:
                 # SVG (x, z) -> Ursina (X, Y, Z)
-                # Aplicamos escala y offset local
-                lx = wp['pos'][0] * self.scale * scale
-                lz = wp['pos'][1] * self.scale * scale
+                # Restamos el offset para que el punto (0,0) sea el centro del blueprint
+                lx = (wp['pos'][0] * self.scale - cx) * scale
+                lz = (wp['pos'][1] * self.scale - cz) * scale
                 
                 # Rotación simple en el plano XZ
-                rad = math.radians(rotation)
+                rad = math.radians(-rotation) # Invertir para Ursina
                 rx = lx * math.cos(rad) - lz * math.sin(rad)
                 rz = lx * math.sin(rad) + lz * math.cos(rad)
                 
                 # Posición final
                 fx = rx + origin[0]
                 fz = rz + origin[2]
-                fy = origin[1] # La altura es la del blueprint
+                fy = origin[1]
                 
                 world_points.append({
                     'pos': (fx, fy, fz),
