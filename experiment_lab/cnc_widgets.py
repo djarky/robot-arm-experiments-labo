@@ -17,7 +17,7 @@ class CNCControlWidget(QGroupBox):
     start_requested = Signal()
     stop_requested = Signal()
     reset_requested = Signal()
-    safety_height_changed = Signal(float)
+    params_changed = Signal(float, float) # (safety_height, feedrate)
     file_selected = Signal(str)
 
     MODE_IDLE = "idle"
@@ -77,15 +77,25 @@ class CNCControlWidget(QGroupBox):
         btn_row.addWidget(self.btn_reset)
         layout.addLayout(btn_row)
         
-        # Parámetros (Altura de seguridad)
+        # Parámetros (Altura de seguridad y Feedrate)
         params_row = QHBoxLayout()
-        params_row.addWidget(QLabel("Alt. Seguridad (m):"))
+        
+        params_row.addWidget(QLabel("Seguridad (m):"))
         self.spin_safety = QDoubleSpinBox()
         self.spin_safety.setRange(0.01, 5.0)
         self.spin_safety.setValue(0.5)
         self.spin_safety.setSingleStep(0.1)
-        self.spin_safety.valueChanged.connect(self.safety_height_changed.emit)
+        self.spin_safety.valueChanged.connect(self._emit_params)
         params_row.addWidget(self.spin_safety)
+        
+        params_row.addWidget(QLabel("Velocidad:"))
+        self.spin_feedrate = QDoubleSpinBox()
+        self.spin_feedrate.setRange(0.1, 10.0)
+        self.spin_feedrate.setValue(1.5)
+        self.spin_feedrate.setSingleStep(0.1)
+        self.spin_feedrate.valueChanged.connect(self._emit_params)
+        params_row.addWidget(self.spin_feedrate)
+        
         params_row.addStretch()
         layout.addLayout(params_row)
         
@@ -191,3 +201,7 @@ class CNCControlWidget(QGroupBox):
             self.btn_stop.setEnabled(True)
             self.btn_reset.setEnabled(False)
             self.lbl_hint.setText("El brazo está siguiendo la trayectoria. Presiona STOP para detener.")
+
+    def _emit_params(self):
+        """Emite los parámetros actuales de la UI."""
+        self.params_changed.emit(self.spin_safety.value(), self.spin_feedrate.value())

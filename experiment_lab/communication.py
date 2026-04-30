@@ -82,9 +82,9 @@ class LabCommunication:
         msg = json.dumps({"type": "reset_cnc"})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
-    def set_cnc_params(self, safety_height):
+    def set_cnc_params(self, safety_height, feedrate):
         """Envía parámetros de configuración CNC a la simulación."""
-        msg = json.dumps({"type": "set_cnc_params", "safety_height": safety_height})
+        msg = json.dumps({"type": "set_cnc_params", "safety_height": safety_height, "feedrate": feedrate})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
 
