@@ -186,6 +186,8 @@ class ExperimentLabUI(QMainWindow):
         self.cnc_ctrl.file_selected.connect(self.comm.load_svg)
         self.cnc_ctrl.start_requested.connect(self.comm.start_svg_trajectory)
         self.cnc_ctrl.stop_requested.connect(self.comm.stop_svg_trajectory)
+        self.cnc_ctrl.reset_requested.connect(self.comm.reset_cnc_trace)
+        self.cnc_ctrl.safety_height_changed.connect(self.comm.set_cnc_params)
         left_panel.addWidget(self.cnc_ctrl)
 
         left_panel.addStretch()

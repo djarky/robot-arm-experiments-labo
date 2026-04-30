@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-    QLabel, QProgressBar, QGroupBox, QFileDialog
+    QLabel, QProgressBar, QGroupBox, QFileDialog, QDoubleSpinBox
 )
 from PySide6.QtCore import Qt, Signal
 import os
@@ -16,6 +16,8 @@ class CNCControlWidget(QGroupBox):
     # Señales para comunicar con la ventana principal del Lab
     start_requested = Signal()
     stop_requested = Signal()
+    reset_requested = Signal()
+    safety_height_changed = Signal(float)
     file_selected = Signal(str)
 
     MODE_IDLE = "idle"
@@ -64,10 +66,28 @@ class CNCControlWidget(QGroupBox):
         self.btn_stop.clicked.connect(self._on_stop)
         self.btn_stop.setStyleSheet("background-color: #c62828; font-weight: bold;")
         
+        self.btn_reset = QPushButton("↺ RESET")
+        self.btn_reset.setEnabled(False)
+        self.btn_reset.clicked.connect(self._on_reset)
+        self.btn_reset.setStyleSheet("background-color: #455a64;")
+        
         btn_row.addWidget(self.btn_load)
         btn_row.addWidget(self.btn_start)
         btn_row.addWidget(self.btn_stop)
+        btn_row.addWidget(self.btn_reset)
         layout.addLayout(btn_row)
+        
+        # Parámetros (Altura de seguridad)
+        params_row = QHBoxLayout()
+        params_row.addWidget(QLabel("Alt. Seguridad (m):"))
+        self.spin_safety = QDoubleSpinBox()
+        self.spin_safety.setRange(0.01, 5.0)
+        self.spin_safety.setValue(0.5)
+        self.spin_safety.setSingleStep(0.1)
+        self.spin_safety.valueChanged.connect(self.safety_height_changed.emit)
+        params_row.addWidget(self.spin_safety)
+        params_row.addStretch()
+        layout.addLayout(params_row)
         
         # Instrucciones contextuales
         self.lbl_hint = QLabel("")
@@ -126,6 +146,10 @@ class CNCControlWidget(QGroupBox):
         self._update_ui_for_mode()
         self.stop_requested.emit()
 
+    def _on_reset(self):
+        self.progress.setValue(0)
+        self.reset_requested.emit()
+
     def _update_ui_for_mode(self):
         """Actualiza la apariencia de todos los controles según el modo actual."""
         if self.mode == self.MODE_IDLE:
@@ -137,6 +161,7 @@ class CNCControlWidget(QGroupBox):
             self.btn_load.setEnabled(True)
             self.btn_start.setEnabled(False)
             self.btn_stop.setEnabled(False)
+            self.btn_reset.setEnabled(False)
             self.lbl_hint.setText("Carga un archivo SVG para comenzar.")
             
         elif self.mode == self.MODE_POSITIONING:
@@ -148,6 +173,7 @@ class CNCControlWidget(QGroupBox):
             self.btn_load.setEnabled(True)
             self.btn_start.setEnabled(True)
             self.btn_stop.setEnabled(False)
+            self.btn_reset.setEnabled(True)
             self.lbl_hint.setText(
                 "Haz clic en el holograma para seleccionarlo. "
                 "Usa G (mover), R (rotar), S (escalar) para posicionarlo. "
@@ -163,4 +189,5 @@ class CNCControlWidget(QGroupBox):
             self.btn_load.setEnabled(False)
             self.btn_start.setEnabled(False)
             self.btn_stop.setEnabled(True)
+            self.btn_reset.setEnabled(False)
             self.lbl_hint.setText("El brazo está siguiendo la trayectoria. Presiona STOP para detener.")

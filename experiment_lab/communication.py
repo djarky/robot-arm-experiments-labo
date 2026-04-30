@@ -77,6 +77,16 @@ class LabCommunication:
         msg = json.dumps({"type": "stop_svg_trajectory"})
         self.sock.sendto(msg.encode(), self.sim_addr)
 
+    def reset_cnc_trace(self):
+        """Solicita a la simulación que limpie el rastro visual del dibujo."""
+        msg = json.dumps({"type": "reset_cnc"})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
+    def set_cnc_params(self, safety_height):
+        """Envía parámetros de configuración CNC a la simulación."""
+        msg = json.dumps({"type": "set_cnc_params", "safety_height": safety_height})
+        self.sock.sendto(msg.encode(), self.sim_addr)
+
 
     def connect_arduino(self, port, baud=115200):
         try:
