@@ -44,8 +44,8 @@ class ExperimentLabUI(QMainWindow):
 
         self.comm = LabCommunication()
         self.input_mgr = InputManager()
-        self.current_angles = [0.0] * 6
-        self.last_sent_angles = [0.0] * 6
+        self.current_angles = [0.0] * 5
+        self.last_sent_angles = [0.0] * 5
         self.last_interaction_time = 0
         self.sim_process = None
         self.log_queue = queue.Queue()
@@ -140,7 +140,7 @@ class ExperimentLabUI(QMainWindow):
         angles_layout = QVBoxLayout()
         self.angle_labels = []
         self.sliders = []
-        for i in range(6):
+        for i in range(5):
             # Label
             lbl = QLabel(f"J{i}: 0.0°")
             angles_layout.addWidget(lbl)
@@ -422,10 +422,27 @@ class ExperimentLabUI(QMainWindow):
         while not self.log_queue.empty():
             try:
                 line = self.log_queue.get_nowait()
-                print(f"[Sim] {line.strip()}")
-                # Solo mostrar errores o avisos importantes en la consola del lab
-                if "Error" in line or "fail" in line.lower():
-                    self.ai_console.append(f"<span style='color:red;'>[Sim] {line.strip()}</span>")
+                # Sistema de colores dinámico según el tag
+                line_str = line.strip()
+                color = "white"
+                
+                if "[ERROR]" in line_str or "Error" in line_str:
+                    color = "#ff4444" # Rojo
+                elif "[WARN]" in line_str:
+                    color = "#ffbb33" # Naranja
+                elif "[INFO]" in line_str:
+                    color = "#33b5e5" # Azul claro
+                elif "[DEBUG]" in line_str:
+                    color = "#aa66cc" # Púrpura
+                elif "[CNC]" in line_str:
+                    color = "#00cccc" # Cyan
+                elif "[Sim]" in line_str:
+                    color = "#999999" # Gris
+                
+                # Mostrar en consola si tiene algún tag o es importante
+                tags = ["[INFO]", "[WARN]", "[DEBUG]", "[CNC]", "[ERROR]", "Error", "fail"]
+                if any(tag in line_str for tag in tags) or line_str.startswith(">>"):
+                    self.ai_console.append(f"<span style='color:{color};'>{line_str}</span>")
             except queue.Empty:
                 break
 
@@ -514,7 +531,7 @@ class ExperimentLabUI(QMainWindow):
                         for i, step in enumerate(steps):
                             state_name = f"step_{i}"
                             pose_key = step["pose"]
-                            angles = main_poses.get(pose_key, [0.0]*6)
+                            angles = main_poses.get(pose_key, [0.0]*5)
                             next_state = f"step_{i+1}" if i < len(steps)-1 else None
                             states[state_name] = {
                                 "pose": str(pose_key),
@@ -579,8 +596,17 @@ class ExperimentLabUI(QMainWindow):
             obj_type = "custom"
             model_path = self.custom_model_path
         
+        if obj_type == "svg":
+            if hasattr(self, 'custom_svg_path') and self.custom_svg_path:
+                self.ai_console.append(f">> [CNC] Cargando blueprint SVG: {os.path.basename(self.custom_svg_path)}")
+                self.comm.load_svg(self.custom_svg_path)
+            else:
+                self.ai_console.append("!! ERROR: Primero selecciona un archivo SVG en el selector de arriba.")
+            return
+
         self.ai_console.append(f">> [Spawn] Solicitando {obj_type} (S:{size}, M:{mass})")
         self.comm.spawn_object(obj_type, size, mass, model_path=model_path)
+
 
     def on_spawn_type_changed(self, index):
         """Maneja el cambio en el selector de tipo de objeto."""
@@ -680,7 +706,7 @@ class ExperimentLabUI(QMainWindow):
                 self.fsm_designer_win.update_status_from_main()
             
             # Sincronizar Sliders visualmente sin disparar eventos redundantes
-            for i in range(6):
+            for i in range(5):
                 self.sliders[i].blockSignals(True)
                 self.sliders[i].setValue(int(self.current_angles[i]))
                 self.sliders[i].blockSignals(False)
@@ -705,8 +731,8 @@ class ExperimentLabUI(QMainWindow):
         # Aplicar deltas de mandos
         mando_movido = False
         if self.input_mgr.active_device_id:
-            # Control de los 6 ejes
-            for i in range(min(len(joy_inputs), 6)):
+            # Control de los 5 ejes
+            for i in range(min(len(joy_inputs), 5)):
                 # Se elimina el 'if abs(joy_inputs[i]) > 0.1' para confiar en el InputManager
                 if joy_inputs[i] != 0: 
                     self.current_angles[i] += joy_inputs[i] * 2.0
@@ -731,7 +757,7 @@ class ExperimentLabUI(QMainWindow):
                 if hasattr(self, "_last_joy_console"): del self._last_joy_console
 
             if actions.get("reset"):
-                self.current_angles = [0.0] * 6
+                self.current_angles = [0.0] * 5
                 for s in self.sliders: s.setValue(0)
                 mando_movido = True
 
@@ -769,7 +795,7 @@ class ExperimentLabUI(QMainWindow):
 
     def sync_ui_from_sim(self, angles):
         """Actualiza mandos y UI basándose en la posición real de Ursina."""
-        for i in range(min(len(angles), 6)):
+        for i in range(min(len(angles), 5)):
             self.current_angles[i] = angles[i]
             self.sliders[i].blockSignals(True)
             self.sliders[i].setValue(int(angles[i]))

@@ -28,6 +28,30 @@
                 "base_neg": {
                     "type": "button",
                     "id": 87
+                },
+                "gripper_open_pos": {
+                    "type": "button",
+                    "id": 69
+                },
+                "gripper_close_pos": {
+                    "type": "button",
+                    "id": 82
+                },
+                "shoulder_pos": {
+                    "type": "button",
+                    "id": 65
+                },
+                "shoulder_neg": {
+                    "type": "button",
+                    "id": 83
+                },
+                "elbow_pos": {
+                    "type": "button",
+                    "id": 90
+                },
+                "elbow_neg": {
+                    "type": "button",
+                    "id": 88
                 }
             }
         },

@@ -676,7 +676,7 @@ class FSMDesignerWindow(QMainWindow):
         if not pose_name or pose_name not in self.poses_library:
             pose_name = list(self.poses_library.keys())[0] if self.poses_library else "None"
             
-        angles = self.poses_library.get(pose_name, [0]*6)
+        angles = self.poses_library.get(pose_name, [0]*5)
         thumb = os.path.join(base_dir, "pose_thumbnails", f"{pose_name}.png")
         
         node = StateNodeItem(state_id, pose_name, angles, thumb)
@@ -716,7 +716,7 @@ class FSMDesignerWindow(QMainWindow):
         for name, info in data.get("states", {}).items():
             pose_name = info.get("pose", "1")
             thumb = os.path.join(base_dir, "pose_thumbnails", f"{pose_name}.png")
-            node = StateNodeItem(name, pose_name, info.get("angles", [0]*6), thumb)
+            node = StateNodeItem(name, pose_name, info.get("angles", [0]*5), thumb)
             
             # Posición guardada o aleatoria
             pos = info.get("pos", [0, 0])

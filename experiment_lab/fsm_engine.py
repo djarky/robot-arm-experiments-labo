@@ -28,8 +28,8 @@ class FSMEngine:
         
         # Estado de ejecución
         self.start_time_in_state = 0
-        self.last_angles = [0.0] * 6
-        self.current_output = [0.0] * 6
+        self.last_angles = [0.0] * 5
+        self.current_output = [0.0] * 5
         self.is_paused = False
 
     def add_state(self, state_obj):
@@ -44,7 +44,7 @@ class FSMEngine:
         
         for name, info in data.get("states", {}).items():
             # info["angles"] puede ser el nombre de una pose o una lista directa
-            angles = info.get("angles", [0.0]*6)
+            angles = info.get("angles", [0.0]*5)
             state = FSMState(name, info.get("pose", "custom"), angles, info.get("transition_time", 1.0))
             for t in info.get("transitions", []):
                 state.add_transition(t["type"], t["params"], t["next"])
@@ -57,7 +57,10 @@ class FSMEngine:
         self.start_time_in_state = time.time()
         self.active = False
         if self.current_state_name in self.states:
-            self.current_output = list(self.states[self.current_state_name].target_angles)
+            angles = list(self.states[self.current_state_name].target_angles)
+            # Ensure exactly 5 elements
+            while len(angles) < 5: angles.append(0.0)
+            self.current_output = angles[:5]
             self.last_angles = list(self.current_output)
 
     def start(self):
@@ -101,10 +104,13 @@ class FSMEngine:
             t = min(1.0, elapsed / state.transition_time)
             # Suavizado simple (ease in/out) opcional
             # t = t * t * (3 - 2 * t) 
-            for i in range(min(len(self.current_output), len(state.target_angles))):
-                self.current_output[i] = self.last_angles[i] + (state.target_angles[i] - self.last_angles[i]) * t
+            for i in range(5):
+                target = state.target_angles[i] if i < len(state.target_angles) else 0.0
+                self.current_output[i] = self.last_angles[i] + (target - self.last_angles[i]) * t
         else:
-            self.current_output = list(state.target_angles)
+            angles = list(state.target_angles)
+            while len(angles) < 5: angles.append(0.0)
+            self.current_output = angles[:5]
 
         # 2. Evaluar Transiciones
         for trans in state.transitions:

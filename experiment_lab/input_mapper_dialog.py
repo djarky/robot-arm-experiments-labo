@@ -272,9 +272,7 @@ class InputMapperDialog(QDialog):
             ("Muñeca J3 (+)", "j3_pos"),
             ("Muñeca J3 (-)", "j3_neg"),
             ("Muñeca J4 (+)", "j4_pos"),
-            ("Muñeca J4 (-)", "j4_neg"),
-            ("Muñeca J5 (+)", "j5_pos"),
-            ("Muñeca J5 (-)", "j5_neg")
+            ("Muñeca J4 (-)", "j4_neg")
         ])
         
         self.create_section(scroll_layout, "CÁMARA SIMULADOR", [
@@ -356,7 +354,6 @@ class InputMapperDialog(QDialog):
             "elbow_pos": {"type": "axis", "id": 3},
             "j3_pos": {"type": "axis", "id": 4},
             "j4_pos": {"type": "axis", "id": 2},
-            "j5_pos": {"type": "axis", "id": 5},
             "gripper_open_pos": {"type": "button", "id": 0},
             "gripper_close_pos": {"type": "button", "id": 1},
             "reset": {"type": "button", "id": 7},
