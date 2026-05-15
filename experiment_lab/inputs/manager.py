@@ -15,7 +15,10 @@ from .wiimote_handler import WiimoteHandler
 from .dsu_handler import DSUHandler
 from .midi_handler import MIDIHandler
 from .serial_handler import SerialHandler
-from .device_scanner import get_categorized_devices as _scan_devices
+from .sdl2_handler import SDL2Handler
+from .xinput_handler import XInputHandler
+from .linuxraw_handler import LinuxRawHandler
+from .device_scanner import get_categorized_devices as _scan_devices, get_available_drivers as _get_drivers
 
 try:
     import pygame
@@ -47,6 +50,7 @@ class InputManager:
         # Sincronizar estado inicial desde config cargada
         self.active_category = self.custom_config.get("active_category", "Teclado")
         self.active_device_id = self.custom_config.get("active_device_id", "KM")
+        self.input_driver = self.custom_config.get("input_driver", "Pygame")
 
         # Crear handlers
         self._pygame_handler = PygameHandler()
@@ -55,6 +59,9 @@ class InputManager:
         self._dsu_handler = DSUHandler()
         self._midi_handler = MIDIHandler()
         self._serial_handler = SerialHandler()
+        self._sdl2_handler = SDL2Handler()
+        self._xinput_handler = XInputHandler()
+        self._linuxraw_handler = LinuxRawHandler()
 
         # Handler activo actualmente
         self._active_handler = None
@@ -246,6 +253,21 @@ class InputManager:
             self.joystick = self._pygame_handler.joystick
             self.initialized = self._pygame_handler.initialized
 
+        elif str(device_id).startswith("SDL_"):
+            self._active_handler = self._sdl2_handler
+            self._active_handler.activate(device_id)
+            self.initialized = True
+
+        elif str(device_id).startswith("XIN_"):
+            self._active_handler = self._xinput_handler
+            self._active_handler.activate(device_id)
+            self.initialized = True
+
+        elif str(device_id).startswith("/dev/input/js"):
+            self._active_handler = self._linuxraw_handler
+            self._active_handler.activate(device_id)
+            self.initialized = True
+
         elif str(device_id).startswith("/dev/input/"):
             self._active_handler = self._evdev_handler
             self._active_handler.activate(device_id)
@@ -283,9 +305,13 @@ class InputManager:
         else:
             self.custom_evdev = None
 
-    def get_categorized_devices(self, force_raw=False):
+    def get_categorized_devices(self):
         """Retorna un diccionario de categorías con sus dispositivos detectados."""
-        return _scan_devices(force_raw=force_raw)
+        return _scan_devices(driver=self.input_driver)
+
+    def get_available_drivers(self):
+        """Retorna los drivers disponibles en el sistema actual."""
+        return _get_drivers()
 
     # ===================================================================
     #  WIIMOTE PAIRING — Delegado al handler
@@ -349,6 +375,7 @@ class InputManager:
         # Actualizar estado global antes de guardar
         self.custom_config["active_category"] = self.active_category
         self.custom_config["active_device_id"] = self.active_device_id
+        self.custom_config["input_driver"] = self.input_driver
 
         with open(path, "w") as f:
             json.dump(self.custom_config, f, indent=4)

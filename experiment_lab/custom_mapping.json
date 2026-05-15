@@ -65,7 +65,12 @@
                 "j5": 108
             },
             "buttons": {},
-            "inputs": {}
+            "inputs": {
+                "base_pos": {
+                    "type": "axis",
+                    "id": 4
+                }
+            }
         },
         "/dev/input/event6": {
             "axes": {},
@@ -79,8 +84,8 @@
             "buttons": {},
             "inputs": {
                 "base_pos": {
-                    "type": "button",
-                    "id": 105
+                    "type": "axis",
+                    "id": 4
                 },
                 "base_neg": {
                     "type": "button",
@@ -170,9 +175,46 @@
                     "id": 5
                 }
             }
+        },
+        "JOY_0": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {
+                "base_pos": {
+                    "type": "button",
+                    "id": 103
+                },
+                "shoulder_pos": {
+                    "type": "axis",
+                    "id": 4
+                },
+                "elbow_pos": {
+                    "type": "axis",
+                    "id": 4
+                },
+                "j3_pos": {
+                    "type": "axis",
+                    "id": 4
+                }
+            }
+        },
+        "/dev/input/js0": {
+            "axes": {},
+            "buttons": {}
+        },
+        "/dev/input/js2": {
+            "axes": {},
+            "buttons": {},
+            "inputs": {
+                "base_pos": {
+                    "type": "axis",
+                    "id": 5
+                }
+            }
         }
     },
     "active_category": "Wiimote",
-    "active_device_id": "WIIMOTE_AUTO",
-    "force_raw_udev": true
+    "active_device_id": "JOY_0",
+    "force_raw_udev": true,
+    "input_driver": "Pygame"
 }

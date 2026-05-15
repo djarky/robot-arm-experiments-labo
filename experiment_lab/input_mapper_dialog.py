@@ -1,7 +1,7 @@
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, 
-    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea, QCheckBox,
+    QWidget, QFrame, QGridLayout, QComboBox, QScrollArea,
     QSlider, QLineEdit
 )
 from PySide6.QtCore import Qt, QTimer
@@ -142,6 +142,16 @@ class InputMapperDialog(QDialog):
         
         header_row = QHBoxLayout()
         
+        # Selector de Driver (Backend)
+        drv_vbox = QVBoxLayout()
+        drv_vbox.addWidget(QLabel("Driver de Entrada (Backend):"))
+        self.driver_selector = QComboBox()
+        self.driver_selector.addItems(self.input_mgr.get_available_drivers())
+        self.driver_selector.setCurrentText(self.input_mgr.input_driver)
+        self.driver_selector.currentTextChanged.connect(self.on_driver_changed)
+        drv_vbox.addWidget(self.driver_selector)
+        header_row.addLayout(drv_vbox)
+
         # Filtros de Categoría y Mando
         cat_vbox = QVBoxLayout()
         cat_vbox.addWidget(QLabel("Categoría de Dispositivo:"))
@@ -154,10 +164,6 @@ class InputMapperDialog(QDialog):
         hw_vbox.addWidget(QLabel("Seleccionar Hardware Detectado:"))
         self.hw_selector = QComboBox()
         hw_vbox.addWidget(self.hw_selector)
-        
-        self.chk_raw = QCheckBox("Forzar Modo RAW (Udev)")
-        hw_vbox.addWidget(self.chk_raw)
-        self.chk_raw.toggled.connect(self.on_raw_toggled)
         
         dz_vbox = QVBoxLayout()
         self.dz_label = QLabel("Zona Muerta: 0.10")
@@ -424,16 +430,19 @@ class InputMapperDialog(QDialog):
             self.binding_target = None
             print(f"[Mapper] Mapeado {action_id} -> {itype} {iid} en perfil {self.input_mgr.active_device_id}")
 
-    def on_raw_toggled(self, checked):
-        # Actualizar scanner si fuera necesario
+    def on_driver_changed(self, driver_name):
+        """Maneja el cambio del backend de entrada."""
+        print(f"[Mapper] Cambiando driver a: {driver_name}")
+        self.input_mgr.input_driver = driver_name
+        # Refrescar categorías y dispositivos
         self.on_category_changed(self.cat_selector.currentText())
+
 
     def on_category_changed(self, category):
         self.hw_selector.blockSignals(True)
         self.hw_selector.clear()
         
-        force_raw = self.chk_raw.isChecked()
-        cats = self.input_mgr.get_categorized_devices(force_raw=force_raw)
+        cats = self.input_mgr.get_categorized_devices()
         devices = cats.get(category, [])
         
         for dev in devices:

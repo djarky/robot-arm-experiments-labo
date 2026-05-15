@@ -54,13 +54,28 @@ class WiimoteHandler(BaseInputHandler):
         if not self.active or not self.nodes:
             return
 
-        for tag, dev in self.nodes.items():
+        import select
+        # Verificar qué nodos tienen datos disponibles (non-blocking)
+        devs_list = list(self.nodes.values())
+        readable, _, _ = select.select(devs_list, [], [], 0)
+
+        for dev in readable:
+            # Encontrar el tag de este dispositivo
+            tag = None
+            for t, d in self.nodes.items():
+                if d == dev:
+                    tag = t
+                    break
+            if not tag:
+                continue
+
             try:
-                for event in dev.read():
+                while True:
+                    event = dev.read_one()
+                    if event is None:
+                        break
                     if event.type == ecodes.EV_ABS:
-                        # LEER SOLO DEL NODO CORRECTO
                         if tag == "accel":
-                            # Calibración para hid-wiimote acelerómetro (rango: -500 a 500)
                             if event.code == ecodes.ABS_RX:
                                 self.state["accel"][0] = event.value / 500.0
                             elif event.code == ecodes.ABS_RY:
@@ -68,7 +83,6 @@ class WiimoteHandler(BaseInputHandler):
                             elif event.code == ecodes.ABS_RZ:
                                 self.state["accel"][2] = event.value / 500.0
                         elif tag == "gyro":
-                            # Calibración para Motion Plus (rango: -16000 a 16000 aprox)
                             if event.code == ecodes.ABS_RX:
                                 self.state["gyro"][0] = event.value / 16000.0
                             elif event.code == ecodes.ABS_RY:
@@ -91,22 +105,17 @@ class WiimoteHandler(BaseInputHandler):
 
         self.poll()
 
-        # 1. Detectar Botones
-        for tag, dev in self.nodes.items():
-            if tag != "buttons": continue
-            try:
-                event = dev.read_one()
-                if event and event.value == 1 and event.type == ecodes.EV_KEY:
-                    return ("button", event.code)
-            except (BlockingIOError, OSError):
-                pass
+        # 1. Detectar Botones presionados (desde el state que poll() actualiza)
+        for code, val in self.state["buttons"].items():
+            if val:
+                return ("button", code)
 
         # 2. Detectar Ejes Virtuales (Inclinación > 0.6 o Giro rápido)
         for i in range(3):
             if abs(self.state["accel"][i]) > 0.6:
-                return ("axis", i) # IDs 0, 1, 2 para Accel
+                return ("axis", i)       # IDs 0, 1, 2 para Accel
             if abs(self.state["gyro"][i]) > 0.6:
-                return ("axis", i + 3) # IDs 3, 4, 5 para Gyro
+                return ("axis", i + 3)   # IDs 3, 4, 5 para Gyro
 
         return None
 
@@ -143,13 +152,15 @@ class WiimoteHandler(BaseInputHandler):
         return 0.0
 
     def flush(self):
-        """Vacía las colas de todos los nodos."""
+        """Vacía las colas de todos los nodos y resetea el estado de botones."""
         for dev in self.nodes.values():
             try:
                 while dev.read_one():
                     pass
             except (BlockingIOError, OSError):
                 pass
+        # Resetear estado de botones para evitar binds fantasma
+        self.state["buttons"] = {}
 
     # --- Wiimote-specific methods ---
 

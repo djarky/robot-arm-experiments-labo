@@ -1,9 +1,19 @@
 """
 device_scanner.py — Detección y clasificación de dispositivos de entrada.
 
-Escanea el sistema buscando dispositivos via evdev y pygame,
+Escanea el sistema buscando dispositivos vía múltiples backends (drivers),
 los clasifica por categoría visual (Xbox, PS5, Joycons, Wiimote, etc.).
+
+Drivers soportados:
+  - Pygame   (Cross-platform, estándar)
+  - SDL2     (Cross-platform, bajo nivel vía pysdl2)
+  - Evdev    (Linux, lectura directa /dev/input/eventX)
+  - XInput   (Windows, API nativa para mandos Xbox)
+  - LinuxRaw (Linux, lectura clásica /dev/input/jsX)
+  - DirectInput (Windows, API clásica — placeholder)
 """
+
+import os
 
 try:
     import pygame
@@ -23,14 +33,204 @@ try:
 except ImportError:
     SERIAL_AVAILABLE = False
 
+try:
+    import sdl2
+    SDL2_AVAILABLE = True
+except ImportError:
+    SDL2_AVAILABLE = False
 
-def get_categorized_devices(force_raw=False):
+XINPUT_AVAILABLE = False
+if os.name == 'nt':
+    try:
+        import ctypes
+        if hasattr(ctypes, 'windll'):
+            try:
+                ctypes.windll.xinput1_4
+                XINPUT_AVAILABLE = True
+            except (AttributeError, OSError):
+                try:
+                    ctypes.windll.xinput1_3
+                    XINPUT_AVAILABLE = True
+                except (AttributeError, OSError):
+                    pass
+    except ImportError:
+        pass
+
+
+def get_available_drivers():
     """
-    Retorna un diccionario de categorías con sus dispositivos detectados.
-    
+    Retorna una lista de drivers de entrada disponibles en el sistema actual.
+    Solo incluye drivers cuyas dependencias están instaladas.
+    """
+    drivers = []
+
+    if PYGAME_AVAILABLE:
+        drivers.append("Pygame")
+    if SDL2_AVAILABLE:
+        drivers.append("SDL2")
+    if EVDEV_AVAILABLE:
+        drivers.append("Evdev")
+    if XINPUT_AVAILABLE:
+        drivers.append("XInput")
+    if os.name != 'nt':
+        drivers.append("LinuxRaw")
+    else:
+        drivers.append("DirectInput")
+
+    # Siempre debe haber al menos uno; fallback
+    if not drivers:
+        drivers.append("Pygame")
+
+    return drivers
+
+
+def _classify_device(categories, dinfo, lower_name):
+    """Clasifica un dispositivo en la categoría correcta según su nombre."""
+    if "nintendo" in lower_name or "rvl" in lower_name:
+        if "accelerometer" not in lower_name and "ir" not in lower_name and "motion plus" not in lower_name:
+            categories["Wiimote"].append(dinfo)
+            return
+    if "xbox" in lower_name:
+        categories["Mando Xbox"].append(dinfo)
+    elif any(k in lower_name for k in ("ps5", "sony", "dualshock", "dualsense")):
+        categories["Mando PS5"].append(dinfo)
+    elif "joy-con" in lower_name:
+        categories["Nintendo Joycons"].append(dinfo)
+    else:
+        categories["Otros (Custom)"].append(dinfo)
+
+
+def _scan_pygame(categories):
+    """Escanea gamepads vía Pygame (SDL2 wrapper de alto nivel)."""
+    if not PYGAME_AVAILABLE:
+        return
+    try:
+        if not pygame.joystick.get_init():
+            pygame.joystick.init()
+        # Refrescar la detección
+        pygame.joystick.quit()
+        pygame.joystick.init()
+        for i in range(pygame.joystick.get_count()):
+            joy = pygame.joystick.Joystick(i)
+            name = joy.get_name()
+            dinfo = {"id": f"JOY_{i}", "name": f"[Pygame] {name}"}
+            _classify_device(categories, dinfo, name.lower())
+    except Exception as e:
+        print(f"[Scanner] Error escaneando Pygame: {e}")
+
+
+def _scan_sdl2(categories):
+    """Escanea gamepads vía SDL2 directo (pysdl2)."""
+    if not SDL2_AVAILABLE:
+        return
+    try:
+        sdl2.SDL_Init(sdl2.SDL_INIT_JOYSTICK | sdl2.SDL_INIT_GAMECONTROLLER)
+        for i in range(sdl2.SDL_NumJoysticks()):
+            raw_name = sdl2.SDL_JoystickNameForIndex(i)
+            name = raw_name.decode('utf-8') if raw_name else f"Joystick {i}"
+            dinfo = {"id": f"SDL_{i}", "name": f"[SDL2] {name}"}
+            _classify_device(categories, dinfo, name.lower())
+    except Exception as e:
+        print(f"[Scanner] Error escaneando SDL2: {e}")
+
+
+def _scan_evdev(categories):
+    """Escanea dispositivos de entrada vía evdev (Linux)."""
+    if not EVDEV_AVAILABLE:
+        return
+    try:
+        for path in evdev.list_devices():
+            dev = evdev.InputDevice(path)
+            dinfo = {"id": path, "name": f"[Evdev] {dev.name}"}
+            _classify_device(categories, dinfo, dev.name.lower())
+    except Exception as e:
+        print(f"[Scanner] Error escaneando Evdev: {e}")
+
+
+def _scan_xinput(categories):
+    """Escanea mandos XInput (Windows, hasta 4 slots)."""
+    if not XINPUT_AVAILABLE:
+        return
+    for i in range(4):
+        name = f"XInput Controller {i}"
+        dinfo = {"id": f"XIN_{i}", "name": f"[XInput] {name}"}
+        _classify_device(categories, dinfo, name.lower())
+
+
+def _scan_linuxraw(categories):
+    """Escanea joysticks clásicos /dev/input/jsX."""
+    for i in range(16):
+        path = f"/dev/input/js{i}"
+        if os.path.exists(path):
+            # Intentar leer el nombre del dispositivo
+            name = path
+            try:
+                import fcntl, array
+                buf = array.array('B', [0] * 64)
+                with open(path, 'rb') as f:
+                    # JSIOCGNAME(len) = 0x80006a13 + (len << 16)
+                    fcntl.ioctl(f, 0x80006a13 | (64 << 16), buf)
+                name = buf.tobytes().split(b'\x00')[0].decode('utf-8')
+            except Exception:
+                pass
+            dinfo = {"id": path, "name": f"[LinuxRaw] {name}"}
+            _classify_device(categories, dinfo, name.lower())
+
+
+def _scan_midi(categories):
+    """Escanea dispositivos MIDI (independiente del driver de gamepad)."""
+    if not PYGAME_AVAILABLE:
+        return
+    try:
+        if not pygame.midi.get_init():
+            pygame.midi.init()
+        for i in range(pygame.midi.get_count()):
+            info = pygame.midi.get_device_info(i)
+            if info and info[2] == 1:  # Is Input
+                categories["MIDI"].append({
+                    "id": str(i),
+                    "name": f"MIDI: {info[1].decode('utf-8')}"
+                })
+    except Exception:
+        pass
+
+
+def _scan_serial(categories):
+    """Escanea puertos seriales (independiente del driver de gamepad)."""
+    if not SERIAL_AVAILABLE:
+        return
+    try:
+        ports = serial.tools.list_ports.comports()
+        for p in ports:
+            categories["Serial"].append({
+                "id": p.device,
+                "name": f"Serial: {p.device} ({p.description})"
+            })
+    except Exception:
+        pass
+
+
+# Mapa de driver -> función de escaneo
+_DRIVER_SCANNERS = {
+    "Pygame": _scan_pygame,
+    "SDL2": _scan_sdl2,
+    "Evdev": _scan_evdev,
+    "XInput": _scan_xinput,
+    "LinuxRaw": _scan_linuxraw,
+    "DirectInput": lambda cats: None,  # Placeholder — futuro
+}
+
+
+def get_categorized_devices(driver="Pygame"):
+    """
+    Retorna un diccionario de categorías con sus dispositivos detectados,
+    usando el driver (backend) especificado para el escaneo de gamepads.
+
+    Los dispositivos MIDI y Serial siempre se escanean independientemente.
+
     Args:
-        force_raw: Si True, lista todos los dispositivos como RAW evdev.
-        
+        driver: Nombre del backend a usar ("Pygame", "SDL2", "Evdev", etc.)
+
     Returns:
         dict: {"Categoría": [{"id": str, "name": str}, ...], ...}
     """
@@ -46,94 +246,15 @@ def get_categorized_devices(force_raw=False):
         "Otros (Custom)": []
     }
 
-    if force_raw:
-        if EVDEV_AVAILABLE:
-            try:
-                for path in evdev.list_devices():
-                    dev = evdev.InputDevice(path)
-                    categories["Otros (Custom)"].append({
-                        "id": path,
-                        "name": f"RAW: {dev.name}"
-                    })
-            except Exception:
-                pass
-        return categories
+    # Ejecutar el escáner del driver seleccionado
+    scanner = _DRIVER_SCANNERS.get(driver)
+    if scanner:
+        scanner(categories)
+    else:
+        print(f"[Scanner] Driver desconocido: {driver}")
 
-    # 1. Evdev Scan (Más preciso para Hardware IDs)
-    if EVDEV_AVAILABLE:
-        try:
-            for path in evdev.list_devices():
-                dev = evdev.InputDevice(path)
-                dinfo = {"id": path, "name": dev.name}
-
-                # Clasificación por nombre/vendor
-                lower_name = dev.name.lower()
-                if "nintendo" in lower_name or "rvl" in lower_name:
-                    # Mostrar solo el nodo principal (Nintendo Wii Remote) en la lista,
-                    # los otros se conectarán automáticamente en el handler.
-                    if "accelerometer" not in lower_name and "ir" not in lower_name and "motion plus" not in lower_name:
-                        dinfo["id"] = "WIIMOTE_AUTO"
-                        categories["Wiimote"].append(dinfo)
-                elif "xbox" in lower_name or dev.info.vendor == 0x045e:
-                    categories["Mando Xbox"].append(dinfo)
-                elif "dualsense" in lower_name or "dualshock" in lower_name or dev.info.vendor == 0x054c:
-                    categories["Mando PS5"].append(dinfo)
-                elif "joy-con" in lower_name:
-                    categories["Nintendo Joycons"].append(dinfo)
-                else:
-                    categories["Otros (Custom)"].append(dinfo)
-        except Exception:
-            pass
-
-    # 2. Pygame fallback for gamepads not caught by evdev
-    if PYGAME_AVAILABLE:
-        pygame.joystick.init()
-        for i in range(pygame.joystick.get_count()):
-            joy = pygame.joystick.Joystick(i)
-            name = joy.get_name().lower()
-            jid = f"JOY_{i}"
-            dinfo = {"id": jid, "name": f"Gamepad {i}: {joy.get_name()}"}
-
-            if "xbox" in name:
-                categories["Mando Xbox"].append(dinfo)
-            elif "ps5" in name or "sony" in name:
-                categories["Mando PS5"].append(dinfo)
-            elif "joy-con" in name:
-                categories["Nintendo Joycons"].append(dinfo)
-            else:
-                # Solo añadir a custom si no lo vimos ya en evdev
-                if not any(
-                    d["name"] == joy.get_name()
-                    for cat in categories.values()
-                    for d in cat
-                ):
-                    categories["Otros (Custom)"].append(dinfo)
-
-    # 3. MIDI Scan
-    if PYGAME_AVAILABLE:
-        try:
-            if not pygame.midi.get_init():
-                pygame.midi.init()
-            for i in range(pygame.midi.get_count()):
-                info = pygame.midi.get_device_info(i)
-                if info and info[2] == 1: # Is Input
-                    categories["MIDI"].append({
-                        "id": str(i),
-                        "name": f"MIDI: {info[1].decode('utf-8')}"
-                    })
-        except Exception:
-            pass
-
-    # 4. Serial Scan
-    if SERIAL_AVAILABLE:
-        try:
-            ports = serial.tools.list_ports.comports()
-            for p in ports:
-                categories["Serial"].append({
-                    "id": p.device,
-                    "name": f"Serial: {p.device} ({p.description})"
-                })
-        except Exception:
-            pass
+    # Siempre escanear MIDI y Serial
+    _scan_midi(categories)
+    _scan_serial(categories)
 
     return categories
