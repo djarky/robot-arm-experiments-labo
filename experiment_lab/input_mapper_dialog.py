@@ -146,7 +146,7 @@ class InputMapperDialog(QDialog):
         cat_vbox = QVBoxLayout()
         cat_vbox.addWidget(QLabel("Categoría de Dispositivo:"))
         self.cat_selector = QComboBox()
-        self.cat_selector.addItems(["Teclado", "Mando Xbox", "Mando PS5", "Nintendo Joycons", "Wiimote", "DSU", "Otros (Custom)"])
+        self.cat_selector.addItems(["Teclado", "Mando Xbox", "Mando PS5", "Nintendo Joycons", "Wiimote", "DSU", "MIDI", "Serial", "Otros (Custom)"])
         cat_vbox.addWidget(self.cat_selector)
         header_row.addLayout(cat_vbox)
         
@@ -214,6 +214,28 @@ class InputMapperDialog(QDialog):
         dsu_vbox.addLayout(dsu_ip_hbox)
         left_layout.addWidget(self.dsu_container)
         self.dsu_container.hide()
+        
+        # Serial Config Row
+        self.serial_container = QWidget()
+        serial_vbox = QVBoxLayout(self.serial_container)
+        serial_vbox.setContentsMargins(0, 0, 0, 0)
+        
+        serial_title = QLabel("CONFIGURACIÓN SERIAL")
+        serial_title.setStyleSheet("color: #4CAF50; font-weight: bold; margin-top: 10px;")
+        serial_vbox.addWidget(serial_title)
+        
+        baud_hbox = QHBoxLayout()
+        baud_hbox.addWidget(QLabel("Baudrate:"))
+        self.baud_selector = QComboBox()
+        self.baud_selector.addItems(["9600", "19200", "38400", "57600", "115200"])
+        self.baud_selector.setCurrentText(str(self.input_mgr.custom_config.get("serial_baud", 115200)))
+        self.baud_selector.currentTextChanged.connect(self.on_serial_config_changed)
+        baud_hbox.addWidget(self.baud_selector)
+        baud_hbox.addStretch()
+        serial_vbox.addLayout(baud_hbox)
+        
+        left_layout.addWidget(self.serial_container)
+        self.serial_container.hide()
         
         self.ctrl_img = QLabel()
         self.ctrl_img.setAlignment(Qt.AlignCenter)
@@ -426,12 +448,15 @@ class InputMapperDialog(QDialog):
             "Wiimote": "Wiimote",
             "Teclado": "Keyboard",
             "DSU": "DSU",
+            "MIDI": "MIDI",
+            "Serial": "Serial",
             "Otros (Custom)": "Custom"
         }
         self.input_mgr.custom_config["controller_style"] = style_map.get(category, "Xbox")
         self.update_diagram()
         self.btn_pair.setVisible(category == "Wiimote")
         self.dsu_container.setVisible(category == "DSU")
+        self.serial_container.setVisible(category == "Serial")
         
         if self.hw_selector.count() > 0:
             self.on_hardware_changed(0)
@@ -462,6 +487,8 @@ class InputMapperDialog(QDialog):
             "Wiimote": "wiimote_bg.png",
             "Keyboard": "keyboard_bg.png",
             "DSU": "dsu_bg.png",
+            "MIDI": "midi_bg.png",
+            "Serial": "serial_bg.png",
             "Custom": "custom_bg.png"
         }
         filename = style_map.get(style, "controller_bg.png")
@@ -489,6 +516,22 @@ class InputMapperDialog(QDialog):
         # Si DSU está activo, reiniciarlo con la nueva config
         if self.input_mgr.active_category == "DSU":
             self.input_mgr.set_active_device("DSU", "DSU")
+
+    def on_serial_config_changed(self):
+        """Actualiza la configuración de Serial en tiempo real."""
+        baud_str = self.baud_selector.currentText()
+        try:
+            baud = int(baud_str)
+        except ValueError:
+            baud = 115200
+            
+        self.input_mgr.custom_config["serial_baud"] = baud
+        
+        # Si Serial está activo, reiniciarlo con la nueva config
+        if self.input_mgr.active_category == "Serial":
+            dev_id = self.hw_selector.currentData()
+            if dev_id:
+                self.input_mgr.set_active_device("Serial", dev_id)
 
     def on_pair_clicked(self):
         self.btn_pair.setEnabled(False)

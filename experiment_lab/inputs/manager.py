@@ -13,6 +13,8 @@ from .pygame_handler import PygameHandler
 from .evdev_handler import EvdevHandler
 from .wiimote_handler import WiimoteHandler
 from .dsu_handler import DSUHandler
+from .midi_handler import MIDIHandler
+from .serial_handler import SerialHandler
 from .device_scanner import get_categorized_devices as _scan_devices
 
 try:
@@ -51,6 +53,8 @@ class InputManager:
         self._evdev_handler = EvdevHandler()
         self._wiimote_handler = WiimoteHandler()
         self._dsu_handler = DSUHandler()
+        self._midi_handler = MIDIHandler()
+        self._serial_handler = SerialHandler()
 
         # Handler activo actualmente
         self._active_handler = None
@@ -247,6 +251,15 @@ class InputManager:
             self._active_handler.activate(device_id)
             # Legacy compat
             self.custom_evdev = self._evdev_handler.device
+
+        elif category == "MIDI":
+            self._active_handler = self._midi_handler
+            self._active_handler.activate(device_id)
+
+        elif category == "Serial":
+            self._active_handler = self._serial_handler
+            baud = self.custom_config.get("serial_baud", 115200)
+            self._active_handler.activate(device_id, baud=baud)
 
         # Actualizar legacy state
         self._sync_legacy_state()

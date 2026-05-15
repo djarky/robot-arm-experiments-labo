@@ -15,7 +15,7 @@
         "toggle_console": 6
     },
     "deadzone": 0.1,
-    "controller_style": "Keyboard",
+    "controller_style": "Wiimote",
     "profiles": {
         "KM": {
             "axes": {},
@@ -159,20 +159,20 @@
             "inputs": {
                 "base_pos": {
                     "type": "axis",
-                    "id": 5
-                },
-                "shoulder_pos": {
-                    "type": "axis",
-                    "id": 4
+                    "id": 3
                 },
                 "elbow_pos": {
                     "type": "axis",
-                    "id": 3
+                    "id": 4
+                },
+                "shoulder_neg": {
+                    "type": "axis",
+                    "id": 5
                 }
             }
         }
     },
-    "active_category": "Teclado",
-    "active_device_id": "KM",
+    "active_category": "Wiimote",
+    "active_device_id": "WIIMOTE_AUTO",
     "force_raw_udev": true
 }

@@ -17,6 +17,12 @@ try:
 except ImportError:
     EVDEV_AVAILABLE = False
 
+try:
+    import serial.tools.list_ports
+    SERIAL_AVAILABLE = True
+except ImportError:
+    SERIAL_AVAILABLE = False
+
 
 def get_categorized_devices(force_raw=False):
     """
@@ -35,6 +41,8 @@ def get_categorized_devices(force_raw=False):
         "Nintendo Joycons": [],
         "Wiimote": [],
         "DSU": [{"id": "DSU", "name": "Servidor Cemuhook / Móvil"}],
+        "MIDI": [],
+        "Serial": [],
         "Otros (Custom)": []
     }
 
@@ -100,5 +108,32 @@ def get_categorized_devices(force_raw=False):
                     for d in cat
                 ):
                     categories["Otros (Custom)"].append(dinfo)
+
+    # 3. MIDI Scan
+    if PYGAME_AVAILABLE:
+        try:
+            if not pygame.midi.get_init():
+                pygame.midi.init()
+            for i in range(pygame.midi.get_count()):
+                info = pygame.midi.get_device_info(i)
+                if info and info[2] == 1: # Is Input
+                    categories["MIDI"].append({
+                        "id": str(i),
+                        "name": f"MIDI: {info[1].decode('utf-8')}"
+                    })
+        except Exception:
+            pass
+
+    # 4. Serial Scan
+    if SERIAL_AVAILABLE:
+        try:
+            ports = serial.tools.list_ports.comports()
+            for p in ports:
+                categories["Serial"].append({
+                    "id": p.device,
+                    "name": f"Serial: {p.device} ({p.description})"
+                })
+        except Exception:
+            pass
 
     return categories
